@@ -39,10 +39,10 @@ df = st.session_state["df_main"]
 if modo == "demo":
     st.markdown("""
     <div style="font-family:'Syne',sans-serif;font-size:28px;font-weight:800;
-      color:#e2e2f0;line-height:1.2;margin-bottom:6px;">
+      color:#2f5f98;line-height:1.2;margin-bottom:6px;">
       🧠 Plano de Crescimento
     </div>
-    <div style="color:#50507a;font-size:14px;margin-bottom:32px;">
+    <div style="color:#2f5f98;font-size:14px;margin-bottom:32px;">
       Resumo executivo com os problemas rankeados por impacto financeiro e o plano de ação priorizado.
     </div>
     """, unsafe_allow_html=True)
@@ -91,11 +91,11 @@ nome_cliente = acesso.get("cliente", "")
 st.markdown(f"""
 <div class="tag-premium">Premium</div>
 <div style="font-family:'Syne',sans-serif;font-size:28px;font-weight:800;
-  color:#e2e2f0;line-height:1.2;margin-bottom:6px;">
+  color:#2f5f98;line-height:1.2;margin-bottom:6px;">
   🧠 Plano de Crescimento
   {f'<span style="font-size:16px;font-weight:400;color:#50507a;"> — {nome_cliente}</span>' if nome_cliente and nome_cliente != "Master" else ""}
 </div>
-<div style="color:#50507a;font-size:14px;margin-bottom:28px;">
+<div style="color:#2f5f98;font-size:14px;margin-bottom:28px;">
   Diagnóstico financeiro completo com ações priorizadas por impacto.
 </div>
 """, unsafe_allow_html=True)
@@ -122,33 +122,33 @@ st.markdown(f"""
     pointer-events:none;"></div>
 
   <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:600;
-    color:#a78bfa;text-transform:uppercase;letter-spacing:1.2px;margin-bottom:16px;">
+    color:#FFFFFF;text-transform:uppercase;letter-spacing:1.2px;margin-bottom:16px;">
     📋 Resumo Executivo
   </div>
 
   <div style="display:flex;gap:48px;flex-wrap:wrap;align-items:flex-end;">
     <div>
-      <div style="font-size:13px;color:#50507a;margin-bottom:4px;">Potencial de ganho mensal</div>
+      <div style="font-size:13px;color:#FFFFFF;margin-bottom:4px;">Potencial de ganho mensal</div>
       <div style="font-family:'Syne',sans-serif;font-size:38px;font-weight:800;color:#f59e0b;line-height:1;">
         {low_fmt} – {high_fmt}
       </div>
-      <div style="font-size:12px;color:#35354a;margin-top:6px;">
+      <div style="font-size:12px;color:#FFFFFF;margin-top:6px;">
         * Estimativa baseada nos dados reais com metodologia de proxy financeiro
       </div>
     </div>
     <div style="display:flex;gap:32px;flex-wrap:wrap;">
       <div>
-        <div style="font-size:12px;color:#50507a;margin-bottom:2px;">Problemas identificados</div>
+        <div style="font-size:12px;color:#FFFFFF;margin-bottom:18px;">Problemas identificados</div>
         <div style="font-family:'Syne',sans-serif;font-size:28px;font-weight:700;color:#e2e2f0;">{n_prob}</div>
       </div>
       <div>
-        <div style="font-size:12px;color:#50507a;margin-bottom:2px;">Faturamento no período</div>
+        <div style="font-size:12px;color:#FFFFFF;margin-bottom:18px;">Faturamento no período</div>
         <div style="font-family:'Syne',sans-serif;font-size:28px;font-weight:700;color:#e2e2f0;">
           R$ {kpis['faturamento']:,.0f}
         </div>
       </div>
       <div>
-        <div style="font-size:12px;color:#50507a;margin-bottom:2px;">Margem líquida atual</div>
+        <div style="font-size:12px;color:#FFFFFF;margin-bottom:18px;">Margem líquida atual</div>
         <div style="font-family:'Syne',sans-serif;font-size:28px;font-weight:700;
           color:{'#34d399' if kpis['receita_liquida']/kpis['faturamento']*100 > 70 else '#f59e0b'};">
           {kpis['receita_liquida']/kpis['faturamento']*100:.1f}%

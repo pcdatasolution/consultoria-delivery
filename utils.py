@@ -50,111 +50,175 @@ def detectar_modo() -> dict:
 
 CSS_GLOBAL = """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
-html, body, [class*="css"]          { font-family: 'DM Sans', Inter; }
-.stApp                               { background: #08080f; color: #e2e2f0; }
-[data-testid="stSidebar"]            { background: #0e0e18 !important; border-right: 1px solid #1c1c2e; }
-[data-testid="metric-container"]     { background: #111120 !important; border: 1px solid #1e1e32 !important; border-radius: 10px !important; padding: 16px !important; }
-[data-testid="stMetricValue"]        { font-family: 'Syne', Inter !important; color: #34d399 !important; }
-[data-testid="stMetricDeltaIcon--up"]   { color: #34d399 !important; }
-[data-testid="stMetricDeltaIcon--down"] { color: #f87171 !important; }
-h1, h2, h3                           { font-family: 'Syne', Inter !important; color: #e2e2f0 !important; }
-
-.section-header {
-    font-family: 'Syne', Inter;
-    font-size: 18px; font-weight: 700; color: #e2e2f0;
-    margin: 28px 0 14px; padding-bottom: 10px;
-    border-bottom: 1px solid #1c1c2e;
+/* ── Base ── */
+html, body, [class*="css"], * {
+    font-family: 'Inter', sans-serif !important;
+}
+.stApp {
+    background: #ffffff !important;
+    color: #111111 !important;
+}
+.stApp [data-testid="stMarkdownContainer"] p {
+    color: inherit !important;
 }
 
-/* ── page links sidebar ── */
+/* ── Sidebar ── */
+[data-testid="stSidebar"] {
+    background: #ffffff !important;
+    border-right: 1px solid #e5e9f0 !important;
+}
+[data-testid="stSidebar"] * {
+    color: #111111 !important;
+}
+/* ── Esconder label nativo do file_uploader ── */
+[data-testid="stFileUploader"] label,
+[data-testid="stFileUploader"] [data-testid="stMarkdownContainer"] {
+    display: none !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+/* ── Sidebar nav links ── */
 [data-testid="stSidebar"] a,
 [data-testid="stSidebar"] a p,
 [data-testid="stSidebar"] a span,
 [data-testid="stSidebar"] [data-testid="stPageLink"] a,
 [data-testid="stSidebar"] [data-testid="stPageLink"] p,
 [data-testid="stSidebar"] [data-testid="stPageLink"] span {
-    color: #e2e2f0 !important;
+    color: #111111 !important;
+    font-size: 14px !important;
+    font-weight: 500 !important;
     text-decoration: none !important;
 }
-
-[data-testid="stSidebar"] a:hover,
 [data-testid="stSidebar"] a:hover p,
 [data-testid="stSidebar"] a:hover span,
-[data-testid="stSidebar"] [data-testid="stPageLink"]:hover a,
 [data-testid="stSidebar"] [data-testid="stPageLink"]:hover p,
 [data-testid="stSidebar"] [data-testid="stPageLink"]:hover span {
-    color: #a78bfa !important;
+    color: #2f5f98 !important;
 }
 
-/* ── lock / premium ── */
+/* ── Metrics ── */
+[data-testid="metric-container"] {
+    background: #f5f7fb !important;
+    border: 1px solid #e0e6f0 !important;
+    border-radius: 10px !important;
+    padding: 16px !important;
+}
+[data-testid="stMetricLabel"] p {
+    color: #111111 !important;
+    font-weight: 500 !important;
+}
+[data-testid="stMetricValue"] {
+    color: #2f5f98 !important;
+    font-weight: 700 !important;
+}
+[data-testid="stMetricDeltaIcon--up"]   { color: #16a34a !important; }
+[data-testid="stMetricDeltaIcon--down"] { color: #dc2626 !important; }
+
+/* ── Headings ── */
+h1, h2, h3 {
+    font-family: 'Inter', sans-serif !important;
+    color: #2f5f98 !important;
+}
+
+/* ── Section header ── */
+.section-header {
+    font-family: 'Inter', sans-serif;
+    font-size: 17px;
+    font-weight: 700;
+    color: #2f5f98;
+    margin: 28px 0 14px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #e0e6f0;
+}
+
+/* ── Lock / premium card ── */
 .lock-card {
-    background: linear-gradient(135deg, #0f0f1e, #160f2a);
-    border: 1px solid #2a1a4e;
+    background: #f5f7fb;
+    border: 1px solid #d0daf0;
     border-radius: 12px;
     padding: 28px 24px;
     text-align: center;
     margin: 20px 0;
 }
 .lock-icon  { font-size: 36px; margin-bottom: 10px; }
-.lock-title { font-family:'Syne',Inter; font-size:18px; font-weight:700; color:#e2e2f0; margin-bottom:6px; }
-.lock-sub   { font-size:14px; color:#60607a; line-height:1.6; margin-bottom:18px; }
-.lock-items { list-style:none; padding:0; margin:0 0 20px; text-align:left; display:inline-block; }
-.lock-items li { font-size:13px; color:#9090a8; padding:4px 0; }
-.lock-items li::before { content:"🔒 "; }
+.lock-title { font-family: 'Inter', sans-serif; font-size: 18px; font-weight: 700; color: #2f5f98; margin-bottom: 6px; }
+.lock-sub   { font-size: 14px; color: #555; line-height: 1.6; margin-bottom: 18px; }
+.lock-items { list-style: none; padding: 0; margin: 0 0 20px; text-align: left; display: inline-block; }
+.lock-items li { font-size: 13px; color: #333; padding: 4px 0; }
+.lock-items li::before { content: "🔒 "; }
 .wpp-btn {
-    display:inline-block; background:#25d366; color:#000 !important;
-    font-family:'Syne',Inter; font-size:14px; font-weight:700;
-    padding:12px 28px; border-radius:8px; text-decoration:none !important;
+    display: inline-block; background: #25d366; color: #000 !important;
+    font-family: 'Inter', sans-serif; font-size: 14px; font-weight: 700;
+    padding: 12px 28px; border-radius: 8px; text-decoration: none !important;
 }
 
-/* ── insight boxes ── */
-.insight { background:#111120; border:1px solid #1e1e32; border-radius:8px; padding:14px 18px; margin:10px 0; }
-.insight.yellow { border-left:3px solid #f59e0b; }
-.insight.red    { border-left:3px solid #f87171; }
-.insight.green  { border-left:3px solid #34d399; }
-.insight.purple { border-left:3px solid #a78bfa; }
-.insight-title  { font-family:'Syne',Inter; font-size:13px; font-weight:700; color:#e2e2f0; margin-bottom:3px; }
-.insight-text   { font-size:13px; color:#70708a; line-height:1.5; }
+/* ── Insight boxes ── */
+.insight { background: #f5f7fb; border: 1px solid #e0e6f0; border-radius: 8px; padding: 14px 18px; margin: 10px 0; }
+.insight.yellow { border-left: 3px solid #f59e0b; }
+.insight.red    { border-left: 3px solid #dc2626; }
+.insight.green  { border-left: 3px solid #16a34a; }
+.insight.purple { border-left: 3px solid #2f5f98; }
+.insight-title  { font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 700; color: #111; margin-bottom: 3px; }
+.insight-text   { font-size: 13px; color: #444; line-height: 1.5; }
 
-/* ── teaser blur ── */
-.blur-wrap { position:relative; border-radius:10px; overflow:hidden; }
-.blur-wrap .blur-content { filter:blur(5px) brightness(0.6); pointer-events:none; user-select:none; }
+/* ── Teaser blur ── */
+.blur-wrap { position: relative; border-radius: 10px; overflow: hidden; }
+.blur-wrap .blur-content { filter: blur(5px) brightness(0.9); pointer-events: none; user-select: none; }
 .blur-wrap .blur-overlay {
-    position:absolute; inset:0; display:flex; flex-direction:column;
-    align-items:center; justify-content:center;
-    background:rgba(8,8,15,0.55); backdrop-filter:blur(2px);
-    font-family:'Syne',Inter; text-align:center; padding:16px;
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: rgba(255,255,255,0.70); backdrop-filter: blur(2px);
+    font-family: 'Inter', sans-serif; text-align: center; padding: 16px;
 }
-.blur-overlay span { font-size:28px; margin-bottom:8px; }
-.blur-overlay p    { font-size:14px; color:#c0c0d8; margin:0; }
+.blur-overlay span { font-size: 28px; margin-bottom: 8px; }
+.blur-overlay p    { font-size: 14px; color: #333; margin: 0; }
 
-/* ── plano card ── */
+/* ── Plano card ── */
 .plano-card {
-    background:#0f0f1e; border:1px solid #1e1e32; border-radius:12px;
-    padding:20px 22px; margin:12px 0;
+    background: #f5f7fb; border: 1px solid #e0e6f0; border-radius: 12px;
+    padding: 20px 22px; margin: 12px 0;
 }
-.plano-cat   { font-size:12px; color:#a78bfa; text-transform:uppercase; letter-spacing:1px; margin-bottom:6px; }
-.plano-title { font-family:'Syne',Inter; font-size:16px; font-weight:700; color:#e2e2f0; margin-bottom:6px; }
-.plano-desc  { font-size:13px; color:#70708a; line-height:1.6; margin-bottom:12px; }
-.plano-impacto { font-size:13px; color:#f59e0b; font-weight:500; margin-bottom:10px; }
-.plano-acao  { font-size:13px; color:#9090a8; padding:4px 0; border-top:1px solid #1c1c2e; }
+.plano-cat   { font-size: 12px; color: #2f5f98; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+.plano-title { font-family: 'Inter', sans-serif; font-size: 16px; font-weight: 700; color: #111; margin-bottom: 6px; }
+.plano-desc  { font-size: 13px; color: #444; line-height: 1.6; margin-bottom: 12px; }
+.plano-impacto { font-size: 13px; color: #f59e0b; font-weight: 500; margin-bottom: 10px; }
+.plano-acao  { font-size: 13px; color: #555; padding: 4px 0; border-top: 1px solid #e0e6f0; }
 
-/* ── choque numbers ── */
-.choque-grid { display:flex; gap:16px; flex-wrap:wrap; margin:20px 0; }
+/* ── Choque numbers ── */
+.choque-grid { display: flex; gap: 16px; flex-wrap: wrap; margin: 20px 0; }
 .choque-item {
-    flex:1; min-width:200px;
-    background:#0f0f1e; border:1px solid #1e1e32; border-radius:12px;
-    padding:20px 18px;
+    flex: 1; min-width: 200px;
+    background: #f5f7fb; border: 1px solid #e0e6f0; border-radius: 12px;
+    padding: 20px 18px;
 }
-.choque-icon  { font-size:26px; margin-bottom:8px; }
-.choque-value { font-family:'Syne',Inter; font-size:28px; font-weight:800; color:#f59e0b; line-height:1.1; }
-.choque-label { font-size:12px; color:#60607a; margin-top:4px; line-height:1.4; }
+.choque-icon  { font-size: 26px; margin-bottom: 8px; }
+.choque-value { font-family: 'Inter', sans-serif; font-size: 28px; font-weight: 800; color: #FF4040; line-height: 1.1; }
+.choque-label { font-size: 12px; color: #666; margin-top: 4px; line-height: 1.4; }
 
-/* misc */
-.tag-demo    { display:inline-block; background:rgba(52,211,153,0.12); border:1px solid rgba(52,211,153,0.3); color:#34d399; font-size:11px; font-weight:600; letter-spacing:1px; text-transform:uppercase; padding:3px 10px; border-radius:20px; margin-bottom:12px; }
-.tag-premium { display:inline-block; background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.3); color:#f59e0b; font-size:11px; font-weight:600; letter-spacing:1px; text-transform:uppercase; padding:3px 10px; border-radius:20px; margin-bottom:12px; }
+/* ── Tags ── */
+.tag-demo    { display: inline-block; background: rgba(22,163,74,0.10); border: 1px solid rgba(22,163,74,0.3); color: #16a34a; font-size: 11px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; padding: 3px 10px; border-radius: 20px; margin-bottom: 12px; }
+.tag-premium { display: inline-block; background: rgba(245,158,11,0.10); border: 1px solid rgba(245,158,11,0.3); color: #008000; font-size: 11px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; padding: 3px 10px; border-radius: 20px; margin-bottom: 12px; }
+
+/* ── Streamlit misc overrides ── */
+/* ── Esconder navegação automática do Streamlit ── */
+[data-testid="stSidebarNav"] {
+    display: none !important;
+}
+[data-testid="stMarkdownContainer"] > div > p,
+[data-testid="stMarkdownContainer"] > div > li {
+    color: #111111 !important;
+}
+.stTextInput input {
+    background: #f5f7fb !important;
+    border: 1px solid #c8d4e8 !important;
+    color: #111 !important;
+}
+.stButton button {
+    font-family: 'Inter', sans-serif !important;
+}
 </style>
 """
 
@@ -167,35 +231,84 @@ def render_sidebar(active: str = "home"):
     acesso = detectar_modo()
 
     with st.sidebar:
+        # ── TOPO: Logo ───────────────────────────────────────────────
         st.markdown("""
-        <div style="padding:14px 0 6px;">
-            <div style="font-family:'Syne',Inter;font-size:19px;font-weight:800;color:#e2e2f0;">🍕 DeliveryPro</div>
-            <div style="font-size:11px;color:#40405a;letter-spacing:1.2px;text-transform:uppercase;margin-top:2px;">Hub de Soluções</div>
+        <div style="padding:18px 4px 14px;">
+            <div style="font-family:'Inter',sans-serif;font-size:20px;font-weight:800;color:#2f5f98;line-height:1.1;">
+                🍕 DeliveryPro
+            </div>
+            <div style="font-size:11px;color:#7a90b0;letter-spacing:1.4px;text-transform:uppercase;margin-top:3px;font-weight:500;">
+                Hub de Soluções
+            </div>
         </div>""", unsafe_allow_html=True)
+
+        # ── UPLOAD ───────────────────────────────────────────────────
+        st.markdown("""
+        <div style="font-size:12px;font-weight:600;color:#7a90b0;
+          text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">
+          📂 Enviar Dados
+        </div>""", unsafe_allow_html=True)
+
+        arquivo = st.file_uploader(
+            label="x",
+            type=["csv"],
+            label_visibility="collapsed",
+            key="sidebar_upload",
+        )
+
+        if arquivo:
+            try:
+                df_up = pd.read_csv(arquivo, sep=None, engine="python")
+                df_up = process_ifood_data(df_up)
+                st.session_state["df_main"] = df_up
+                st.session_state["is_mock"] = False
+                st.markdown("""
+                <div style="background:rgba(52,211,153,0.08);border:1px solid rgba(52,211,153,0.2);
+                  border-radius:8px;padding:8px 12px;margin-top:6px;">
+                  <div style="font-size:12px;color:#34d399;font-weight:600;">
+                    ✅ Utilizando dados enviados
+                  </div>
+                </div>""", unsafe_allow_html=True)
+            except Exception as e:
+                st.error(f"Erro: {e}")
+        else:
+            if st.session_state.get("is_mock", True):
+                st.caption("Usando dados de demonstração.")
 
         st.markdown("---")
 
-        st.page_link("streamlit_app.py",         label="🏠  Visão Geral")
-        st.page_link("pages/1_Operacao.py",      label="🚚  Operação")
-        st.page_link("pages/2_Lucratividade.py", label="💰  Lucratividade")
-        st.page_link("pages/3_Fidelizacao.py",   label="❤️  Fidelização")
+        # ── NAVEGAÇÃO ────────────────────────────────────────────────
+        st.markdown("""
+        <div style="font-size:11px;font-weight:600;color:#7a90b0;
+          text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">
+          Etapas
+        </div>""", unsafe_allow_html=True)
+
+        st.page_link("app.py",                          label="🏠  Visão Geral")
+        st.page_link("pages/1_Operacao.py",             label="🚚  Operação")
+        st.page_link("pages/2_Lucratividade.py",        label="💰  Lucratividade")
+        st.page_link("pages/3_Fidelizacao.py",          label="❤️  Fidelização")
+        st.page_link("pages/5_Aquisicao.py",            label="📈  Aquisição & Mercado")
 
         if acesso["modo"] == "premium":
-            st.page_link("pages/4_Plano.py", label="🧠  Plano de Crescimento")
+            st.page_link("pages/4_Plano.py",            label="🧠  Plano de Crescimento")
         else:
             st.markdown("""
-            <div style="padding:6px 12px;margin:2px 0;border-radius:6px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);">
+            <div style="padding:6px 12px;margin:2px 0;border-radius:6px;
+              background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);">
                 <span style="font-size:13px;color:#50504a;">🔒  Plano de Crescimento</span>
             </div>""", unsafe_allow_html=True)
 
         st.markdown("---")
 
-        # Badge de modo
+        # ── ACESSO ───────────────────────────────────────────────────
         if acesso["modo"] == "premium":
             nome = acesso["cliente"]
             st.markdown(f"""
-            <div style="background:rgba(52,211,153,0.08);border:1px solid rgba(52,211,153,0.2);border-radius:8px;padding:10px 12px;">
-                <div style="font-size:11px;color:#34d399;font-weight:600;text-transform:uppercase;letter-spacing:1px;">✅ Acesso Premium</div>
+            <div style="background:rgba(52,211,153,0.08);border:1px solid rgba(52,211,153,0.2);
+              border-radius:8px;padding:10px 12px;">
+                <div style="font-size:11px;color:#34d399;font-weight:600;
+                  text-transform:uppercase;letter-spacing:1px;">✅ Acesso Premium</div>
                 <div style="font-size:13px;color:#9090a8;margin-top:2px;">{nome}</div>
             </div>""", unsafe_allow_html=True)
             st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
@@ -205,33 +318,39 @@ def render_sidebar(active: str = "home"):
                 st.rerun()
         else:
             st.markdown("""
-            <div style="background:rgba(17,17,32,0.6);border:1px solid #1e1e32;border-radius:8px;padding:10px 12px;">
-                <div style="font-size:11px;color:#f59e0b;font-weight:600;text-transform:uppercase;letter-spacing:1px;">🔓 Modo Demo</div>
-                <div style="font-size:12px;color:#50507a;margin-top:4px;line-height:1.5;">Diagnóstico completo bloqueado</div>
+            <div style="background:rgba(17,17,32,0.06);border:1px solid #e0e6f0;
+              border-radius:8px;padding:10px 12px;">
+                <div style="font-size:11px;color:#f59e0b;font-weight:600;
+                  text-transform:uppercase;letter-spacing:1px;">🔓 Modo Demo</div>
+                <div style="font-size:12px;color:#7a90b0;margin-top:4px;line-height:1.5;">
+                  Diagnóstico completo bloqueado</div>
             </div>""", unsafe_allow_html=True)
 
             st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
-            senha_input = st.text_input("Código de acesso", type="password", placeholder="Digite seu código", key="senha_input_sidebar")
-        if st.button("Acessar", use_container_width=True, key="btn_acessar"):
-            if senha_input:
-                if senha_input == SENHA_MASTER or senha_input in CLIENTES_PREMIUM:
-                    st.session_state["senha_digitada"] = senha_input
-                    st.rerun()
-                else:
-                    st.error("Acesso negado.")
+            senha_input = st.text_input(
+                "Código de acesso", type="password",
+                placeholder="Digite seu código", key="senha_input_sidebar"
+            )
+            if st.button("Acessar", use_container_width=True, key="btn_acessar"):
+                if senha_input:
+                    if senha_input == SENHA_MASTER or senha_input in CLIENTES_PREMIUM:
+                        st.session_state["senha_digitada"] = senha_input
+                        st.rerun()
+                    else:
+                        st.error("Acesso negado.")
 
-        # Painel master (oculto — só aparece se is_master)
+        # ── PAINEL MASTER ────────────────────────────────────────────
         if acesso["is_master"]:
             st.markdown("---")
             st.markdown("""
-            <div style="font-size:11px;color:#a78bfa;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">
+            <div style="font-size:11px;color:#a78bfa;text-transform:uppercase;
+              letter-spacing:1px;margin-bottom:8px;">
                 🔧 Painel Master
             </div>""", unsafe_allow_html=True)
             ajuste = st.text_area(
                 "Observações personalizadas para este cliente",
-                key="ajuste_manual_master",
-                height=120,
-                placeholder="Ex: 'No seu caso, o item Hamburguer Duplo representa 32% das vendas e é o maior problema de margem...'"
+                key="ajuste_manual_master", height=120,
+                placeholder="Ex: 'No seu caso, o Hamburguer Duplo representa 32% das vendas...'"
             )
             if ajuste:
                 st.session_state["ajuste_manual"] = ajuste

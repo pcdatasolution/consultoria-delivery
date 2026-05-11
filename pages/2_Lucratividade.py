@@ -71,10 +71,10 @@ tag_html = f'<div class="{"tag-demo" if modo == "demo" else "tag-premium"}">{"De
 st.markdown(f"""
 {tag_html}
 <div style="font-family:'Syne',sans-serif;font-size:28px;font-weight:800;
-  color:#e2e2f0;line-height:1.2;margin-bottom:6px;">
+  color:#2f5f98;line-height:1.2;margin-bottom:6px;">
   💰 Lucratividade & Cardápio
 </div>
-<div style="color:#50507a;font-size:14px;margin-bottom:28px;">
+<div style="color:#2f5f98;font-size:14px;margin-bottom:28px;">
   {"Visão geral de faturamento e volume. Análise de margem disponível no plano completo." if modo == "demo"
    else "Diagnóstico completo — margem por item, matriz de cardápio e plano de ação."}
 </div>
@@ -85,46 +85,72 @@ st.markdown(f"""
 # ─────────────────────────────────────────────────────────────────────────────
 st.markdown('<div class="section-header">📊 Números Gerais</div>', unsafe_allow_html=True)
 
-receita_total = item_stats["receita"].sum()
-receita_liq   = item_stats["rec_liq"].sum()
-margem_media  = receita_liq / receita_total * 100 if receita_total else 0
-comissao_tot  = item_stats["comissao"].sum()
+receita_total  = item_stats["receita"].sum()
+receita_liq    = item_stats["rec_liq"].sum()
+margem_media   = receita_liq / receita_total * 100 if receita_total else 0
+ticket_medio   = df_ok["Valor Bruto"].mean()
+itens_p_pedido = df_ok.groupby("ID Pedido")["Nome do Item"].count().mean() if "ID Pedido" in df_ok.columns else df_ok["Nome do Item"].count() / len(df_ok)
 
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Receita Total no Período",
     f"R$ {receita_total:,.0f}".replace(",","."))
-c2.metric("Receita Líquida (após iFood)",
-    f"R$ {receita_liq:,.0f}".replace(",","."))
-c3.metric("Margem Líquida Média",
+c2.metric("Ticket Médio",
+    f"R$ {ticket_medio:.2f}".replace(".",","))
+c3.metric("Itens por Pedido",
+    f"{itens_p_pedido:.1f}")
+c4.metric("Margem Líquida Média",
     f"{margem_media:.1f}%")
-c4.metric("Comissão Total paga ao iFood",
-    f"R$ {comissao_tot:,.0f}".replace(",","."),
-    delta="Custo da plataforma", delta_color="off")
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  SEÇÃO 2 — Receita por item (ambos os modos, mas demo esconde margem)
 # ─────────────────────────────────────────────────────────────────────────────
 st.markdown('<div class="section-header">📦 Vendas por Item</div>', unsafe_allow_html=True)
 
-top_itens = item_stats.sort_values("receita", ascending=True).tail(10)
+top_itens = item_stats.sort_values("receita", ascending=False).head(10).copy()
+top_itens["receita_acum"] = top_itens["receita"].cumsum()
+top_itens["pct_acum"]     = top_itens["receita_acum"] / receita_total * 100
+top_itens_plot = top_itens.sort_values("receita", ascending=False)
 
-fig_itens = go.Figure(go.Bar(
-    y=top_itens["Nome do Item"],
-    x=top_itens["receita"],
+fig_itens = go.Figure()
+
+fig_itens.add_trace(go.Bar(
+    y=top_itens_plot["Nome do Item"],
+    x=top_itens_plot["receita"],
     orientation="h",
-    marker=dict(color="#a78bfa", opacity=0.85),
-    text=top_itens["receita"].apply(lambda x: f"R$ {x:,.0f}".replace(",",".")),
+    name="Receita",
+    marker=dict(color="#2f5f98", opacity=0.85),
+    text=top_itens_plot["receita"].apply(lambda x: f"R$ {x:,.0f}".replace(",",".")),
     textposition="outside",
-    customdata=top_itens["vendas"],
+    customdata=top_itens_plot["vendas"],
     hovertemplate="%{y}<br>Receita: R$ %{x:,.0f}<br>Pedidos: %{customdata}<extra></extra>",
+    xaxis="x1",
 ))
+
+fig_itens.add_trace(go.Scatter(
+    y=top_itens_plot["Nome do Item"],
+    x=top_itens_plot["pct_acum"],
+    mode="lines+markers+text",
+    name="% Acumulado",
+    line=dict(color="#f59e0b", width=2),
+    marker=dict(color="#f59e0b", size=6),
+    text=top_itens_plot["pct_acum"].apply(lambda x: f"{x:.0f}%"),
+    textposition="middle right",
+    textfont=dict(size=10, color="#f59e0b"),
+    hovertemplate="%{y}<br>Acumulado: %{x:.1f}%<extra></extra>",
+    xaxis="x2",
+))
+
 fig_itens.update_layout(
     height=340,
-    margin=dict(l=0, r=100, t=8, b=0),
+    margin=dict(l=0, r=60, t=8, b=0),
     paper_bgcolor="rgba(0,0,0,0)",
     plot_bgcolor="rgba(0,0,0,0)",
     xaxis=dict(showgrid=True, gridcolor="#1a1a28", color="#50507a", tickprefix="R$ "),
+    xaxis2=dict(overlaying="x", side="top", range=[0, 110],
+                ticksuffix="%", color="#f59e0b", showgrid=False),
     yaxis=dict(showgrid=False, color="#9090a8"),
+    legend=dict(orientation="h", yanchor="bottom", y=1.08,
+                xanchor="right", x=1, font=dict(size=11)),
     font=dict(family="DM Sans", color="#9090a8"),
 )
 st.plotly_chart(fig_itens, use_container_width=True)

@@ -55,7 +55,9 @@ clientes["intervalo_medio"] = (
 n_total    = len(clientes)
 n_inativos = len(clientes[clientes["dias_inativo"] > 30])
 n_ativos   = n_total - n_inativos
-pct_retorno = n_ativos / n_total * 100 if n_total else 0
+n_recorrentes = len(clientes[clientes["pedidos"] > 1])
+pct_retorno   = n_recorrentes / n_total * 100 if n_total else 0
+pct_ativos   = n_ativos / n_total * 100 if n_total else 0
 pct_churn   = n_inativos / n_total * 100 if n_total else 0
 intervalo   = clientes["intervalo_medio"].median()
 ticket_med  = df_ok["Valor Bruto"].mean()
@@ -66,10 +68,10 @@ tag_html = f'<div class="{"tag-demo" if modo == "demo" else "tag-premium"}">{"De
 st.markdown(f"""
 {tag_html}
 <div style="font-family:'Syne',sans-serif;font-size:28px;font-weight:800;
-  color:#e2e2f0;line-height:1.2;margin-bottom:6px;">
+  color:#2f5f98;line-height:1.2;margin-bottom:6px;">
   ❤️ Fidelização & Retenção
 </div>
-<div style="color:#50507a;font-size:14px;margin-bottom:28px;">
+<div style="color:#2f5f98;font-size:14px;margin-bottom:28px;">
   {"Taxa de retorno e comportamento geral dos clientes. Análise completa disponível no plano completo." if modo == "demo"
    else "Diagnóstico completo — cohort, churn e lista de clientes para recuperar agora."}
 </div>
@@ -80,12 +82,16 @@ st.markdown(f"""
 # ─────────────────────────────────────────────────────────────────────────────
 st.markdown('<div class="section-header">📊 Saúde da Base de Clientes</div>', unsafe_allow_html=True)
 
-c1, c2, c3, c4 = st.columns(4)
+ltv = clientes["receita"].mean()
+
+c1, c2, c3, c4, c5 = st.columns(5)
 c1.metric("Clientes Únicos",       f"{n_total:,}".replace(",","."))
 c2.metric("Clientes Ativos (30d)", f"{n_ativos:,}".replace(",","."),
-    delta=f"{pct_retorno:.0f}% da base", delta_color="off")
-c3.metric("Taxa de Retorno",       f"{pct_retorno:.1f}%")
+    delta=f"{pct_ativos:.0f}% da base", delta_color="off")
+c3.metric("Clientes Recorrentes",  f"{pct_retorno:.1f}%",
+    delta=f"{n_recorrentes} clientes", delta_color="off")
 c4.metric("Intervalo Médio entre Pedidos", f"{intervalo:.0f} dias")
+c5.metric("LTV Médio por Cliente", f"R$ {ltv:,.0f}".replace(",","."))
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  SEÇÃO 2 — Funil de retenção (ambos os modos)
@@ -255,103 +261,101 @@ else:
     </div>
     """, unsafe_allow_html=True)
 
-    # ── PREMIUM: Lista de clientes para recuperar ─────────────────────────
-    st.markdown('<div class="section-header">🎯 Clientes Para Recuperar Agora</div>', unsafe_allow_html=True)
+# ── PREMIUM: Distribuição de Frequência ──────────────────────────────
+    st.markdown('<div class="section-header">🍩 Distribuição de Frequência</div>', unsafe_allow_html=True)
 
-    # Classificar por risco
-    def risco(dias):
-        if dias > 60:  return "🔴 Alto Risco"
-        elif dias > 30: return "🟡 Atenção"
-        else:           return "🟢 Ativo"
+    clientes["segmento"] = pd.cut(
+        clientes["pedidos"],
+        bins=[0, 1, 4, float("inf")],
+        labels=["🆕 Novos (1 pedido)", "🔄 Recorrentes (2–4)", "⭐ Fiéis (5+)"],
+    )
+    seg_counts = clientes["segmento"].value_counts().reindex(
+        ["🆕 Novos (1 pedido)", "🔄 Recorrentes (2–4)", "⭐ Fiéis (5+)"]
+    )
 
-    clientes["risco"] = clientes["dias_inativo"].apply(risco)
+    col_pizza, col_seg_insight = st.columns([2, 1])
 
-    inativos_lista = (
-        clientes[clientes["risco"] != "🟢 Ativo"]
-        .sort_values("receita", ascending=False)
+    with col_pizza:
+        fig_seg = go.Figure(go.Bar(
+            x=seg_counts.index.tolist(),
+            y=seg_counts.values.tolist(),
+            marker=dict(color=["#a78bfa", "#34d399", "#f59e0b"], opacity=0.85),
+            text=[f"{v} ({v/n_total*100:.0f}%)" for v in seg_counts.values],
+            textposition="outside",
+            hovertemplate="%{x}<br>%{y} clientes<extra></extra>",
+        ))
+        fig_seg.update_layout(
+            height=300,
+            margin=dict(l=0, r=0, t=10, b=40),
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            xaxis=dict(showgrid=False, color="#9090a8"),
+            yaxis=dict(showgrid=True, gridcolor="#1a1a28", color="#50507a", title="Clientes"),
+            font=dict(family="DM Sans", color="#9090a8"),
+        )
+        st.plotly_chart(fig_seg, use_container_width=True)
+
+    with col_seg_insight:
+        st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+        pct_fieis = seg_counts.get("⭐ Fiéis (5+)", 0) / n_total * 100 if n_total else 0
+        pct_novos = seg_counts.get("🆕 Novos (1 pedido)", 0) / n_total * 100 if n_total else 0
+        st.markdown(f"""
+        <div class="insight yellow">
+          <div class="insight-title">⭐ Fiéis representam {pct_fieis:.0f}% da base</div>
+          <div class="insight-text">
+            Clientes VIP compram com frequência e têm ticket maior.
+            Priorize ações para migrar recorrentes para esse grupo.
+          </div>
+        </div>
+        <div class="insight purple" style="margin-top:10px;">
+          <div class="insight-title">🆕 {pct_novos:.0f}% compraram só uma vez</div>
+          <div class="insight-text">
+            Alta concentração de novos indica dificuldade de retenção.
+            Um cupom de segunda compra pode converter boa parte desse grupo.
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # ── PREMIUM: Ranking de Clientes Fiéis ───────────────────────────────
+    st.markdown('<div class="section-header">🏆 Ranking de Clientes Fiéis</div>', unsafe_allow_html=True)
+
+    top_clientes = (
+        clientes.sort_values("receita", ascending=False)
         .head(20)
+        .copy()
     )
+    top_clientes["ticket_medio"]   = top_clientes["receita"] / top_clientes["pedidos"]
+    top_clientes["ultimo_pedido"]  = top_clientes["dias_inativo"].apply(lambda x: f"há {int(x)} dias")
+    top_clientes["Total Gasto"]    = top_clientes["receita"].apply(lambda x: f"R$ {x:,.0f}".replace(",","."))
+    top_clientes["Ticket Médio"]   = top_clientes["ticket_medio"].apply(lambda x: f"R$ {x:.2f}".replace(".",","))
+    top_clientes["Qtd Pedidos"]    = top_clientes["pedidos"].astype(int)
+    top_clientes["Último Pedido"]  = top_clientes["ultimo_pedido"]
+    
+    tabela_top = top_clientes[["ID do Cliente","Total Gasto","Qtd Pedidos","Ticket Médio","Último Pedido","dias_inativo"]].copy()
+    tabela_top.columns = ["ID Cliente","Total Gasto","Qtd Pedidos","Ticket Médio","Último Pedido","dias_inativo"]
 
-    st.markdown(f"""
-    <div class="insight yellow" style="margin-bottom:16px;">
-      <div class="insight-title">💡 Como usar essa lista</div>
-      <div class="insight-text">
-        {len(inativos_lista)} clientes com maior valor histórico que pararam de pedir.
-        Priorize os de <span style="color:#f87171;">Alto Risco</span> com ticket acima da média.
-        Um cupom de R$ 10–15 enviado via iFood pode trazer ~25% de volta.
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # Filtro rápido
-    filtro_risco = st.radio(
-        "Filtrar por risco",
-        ["Todos", "🔴 Alto Risco", "🟡 Atenção"],
-        horizontal=True,
-        key="filtro_risco_fid",
+    st.dataframe(
+        tabela_top,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "ID Cliente":    st.column_config.TextColumn(width="medium"),
+            "Total Gasto":   st.column_config.TextColumn(width="medium"),
+            "Qtd Pedidos":   st.column_config.NumberColumn(width="small"),
+            "Ticket Médio":  st.column_config.TextColumn(width="medium"),
+            "Último Pedido": st.column_config.TextColumn(
+                width="medium",
+                help="Quanto mais vermelho, mais tempo sem comprar",
+            ),
+            "dias_inativo":  st.column_config.ProgressColumn(
+                label="Inatividade",
+                width="medium",
+                min_value=0,
+                max_value=int(top_clientes["dias_inativo"].max()),
+                format="%d dias",
+            ),
+        },
     )
-    if filtro_risco != "Todos":
-        inativos_lista = inativos_lista[inativos_lista["risco"] == filtro_risco]
-
-    # Cards em duas colunas
-    col_a, col_b = st.columns(2)
-    for i, (_, row) in enumerate(inativos_lista.iterrows()):
-        col = col_a if i % 2 == 0 else col_b
-
-        bg   = "rgba(248,113,113,0.07)" if "Alto" in row["risco"] else "rgba(245,158,11,0.06)"
-        bord = "rgba(248,113,113,0.2)"  if "Alto" in row["risco"] else "rgba(245,158,11,0.18)"
-        badge_bg  = "rgba(248,113,113,0.2)"  if "Alto" in row["risco"] else "rgba(245,158,11,0.2)"
-        badge_cor = "#f87171" if "Alto" in row["risco"] else "#f59e0b"
-
-        with col:
-            st.markdown(f"""
-            <div style="background:{bg};border:1px solid {bord};border-radius:10px;
-              padding:14px 16px;margin:5px 0;display:flex;
-              justify-content:space-between;align-items:center;">
-              <div>
-                <div style="font-family:'Syne',sans-serif;font-size:13px;
-                  font-weight:700;color:#e2e2f0;">{row['ID do Cliente']}</div>
-                <div style="font-size:12px;color:#60607a;margin-top:2px;">
-                  {int(row['pedidos'])} pedidos · R$ {row['receita']:,.0f} histórico
-                </div>
-              </div>
-              <div style="background:{badge_bg};color:{badge_cor};
-                font-size:11px;font-weight:600;padding:3px 8px;
-                border-radius:4px;white-space:nowrap;">
-                {int(row['dias_inativo'])} dias sem pedir
-              </div>
-            </div>
-            """, unsafe_allow_html=True)
-
-    # ── PREMIUM: Novos clientes por mês ──────────────────────────────────
-    st.markdown('<div class="section-header">📈 Novos Clientes por Mês</div>', unsafe_allow_html=True)
-
-    primeiros = (
-        df_ok.groupby("ID do Cliente")["Data do Pedido"]
-        .min().reset_index()
-        .rename(columns={"Data do Pedido": "Primeiro Pedido"})
-    )
-    primeiros["Mês"] = primeiros["Primeiro Pedido"].dt.to_period("M").dt.start_time
-    novos_mes = primeiros.groupby("Mês").size().reset_index(name="Novos").tail(6)
-
-    fig_novos = go.Figure(go.Bar(
-        x=novos_mes["Mês"],
-        y=novos_mes["Novos"],
-        marker=dict(color="#a78bfa", opacity=0.8),
-        text=novos_mes["Novos"],
-        textposition="outside",
-        hovertemplate="%{x|%b/%Y}: %{y} novos clientes<extra></extra>",
-    ))
-    fig_novos.update_layout(
-        height=240,
-        margin=dict(l=0, r=0, t=10, b=0),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        xaxis=dict(showgrid=False, color="#9090a8", tickformat="%b/%y"),
-        yaxis=dict(showgrid=True, gridcolor="#1a1a28", color="#50507a"),
-        font=dict(family="DM Sans", color="#9090a8"),
-    )
-    st.plotly_chart(fig_novos, use_container_width=True)
 
     # Ajuste manual master
     ajuste = st.session_state.get("ajuste_manual", "")

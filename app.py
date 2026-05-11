@@ -35,105 +35,18 @@ df     = st.session_state["df_main"]
 kpis   = get_kpis(df)
 choque = calcular_choque(df)
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  HERO
-# ─────────────────────────────────────────────────────────────────────────────
-st.markdown("""
-<div style="
-    background: linear-gradient(135deg, #0c0c1a 0%, #160a28 55%, #0a160c 100%);
-    border: 1px solid #221840;
-    border-radius: 16px;
-    padding: 52px 48px 44px;
-    margin-bottom: 32px;
-    position: relative;
-    overflow: hidden;
-">
-  <!-- glow decorativo -->
-  <div style="position:absolute;top:-60%;left:-5%;width:45%;height:200%;
-    background:radial-gradient(ellipse,rgba(139,92,246,.07) 0%,transparent 70%);
-    pointer-events:none;"></div>
-  <div style="position:absolute;bottom:-40%;right:0;width:40%;height:180%;
-    background:radial-gradient(ellipse,rgba(34,197,94,.05) 0%,transparent 70%);
-    pointer-events:none;"></div>
 
-  <div style="display:inline-block;background:rgba(139,92,246,.12);
-    border:1px solid rgba(139,92,246,.35);color:#a78bfa;
-    font-size:11px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;
-    padding:5px 13px;border-radius:20px;margin-bottom:20px;">
-    📊 Consultoria de Dados para Delivery
-  </div>
 
-  <h1 style="font-family:'Syne',Inter;font-size:clamp(28px,3.8vw,50px);
-    font-weight:800;line-height:1.15;color:#f0f0ff;margin-bottom:18px;">
-    Descubra onde seu delivery<br>
-    está <span style="background:linear-gradient(135deg,#a78bfa,#34d399);
-      -webkit-background-clip:text;-webkit-text-fill-color:transparent;
-      background-clip:text;">perdendo dinheiro</span> — em segundos.
-  </h1>
-
-  <p style="font-size:17px;font-weight:300;color:#8080a0;line-height:1.7;
-    max-width:560px;margin-bottom:0;">
-    Suba o relatório do iFood e receba um diagnóstico financeiro
-    com os problemas rankeados por impacto — e o que fazer em cada um.
-  </p>
-</div>
-""", unsafe_allow_html=True)
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  UPLOAD
-# ─────────────────────────────────────────────────────────────────────────────
-st.markdown("""
-<div style="font-family:'Syne',Inter;font-size:17px;font-weight:700;
-  color:#e2e2f0;margin-bottom:4px;">
-  📂 Suba seu relatório
-</div>
-<div style="font-size:13px;color:#50507a;margin-bottom:12px;">
-  Exporte pelo Portal do Parceiro iFood → Relatórios → Pedidos → CSV
-</div>
-""", unsafe_allow_html=True)
-
-col_up, col_btn = st.columns([3, 1])
-
-with col_up:
-    arquivo = st.file_uploader(
-        label="Arraste o CSV aqui ou clique para selecionar",
-        type=["csv"],
-        label_visibility="collapsed",
-    )
-
-with col_btn:
-    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-    if st.button("🎲 Testar com dados simulados", use_container_width=True):
-        st.session_state["df_main"] = process_ifood_data(generate_mock_ifood_data(800))
-        st.session_state["is_mock"] = True
-        st.rerun()
-
-# Processar upload real
-if arquivo:
-    try:
-        df_up = pd.read_csv(arquivo, sep=None, engine="python")
-        df_up = process_ifood_data(df_up)
-        st.session_state["df_main"] = df_up
-        st.session_state["is_mock"] = False
-        df     = df_up
-        kpis   = get_kpis(df)
-        choque = calcular_choque(df)
-        st.success(f"✅ {len(df):,} pedidos carregados. Diagnóstico atualizado abaixo.")
-    except Exception as e:
-        st.error(f"Erro ao processar arquivo: {e}")
-else:
-    if st.session_state.get("is_mock"):
-        st.caption("👆 Exibindo **dados de demonstração** — 800 pedidos simulados no formato iFood.")
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  CHOQUE DE REALIDADE
 # ─────────────────────────────────────────────────────────────────────────────
 st.markdown("""
-<div style="font-family:'Syne',Inter;font-size:17px;font-weight:700;
-  color:#e2e2f0;margin:32px 0 6px;">
+<div style="font-family:'Syne',Inter;font-size:28px;font-weight:700;
+  color:#2f5f98;margin:32px 0 6px;">
   ⚡ Diagnóstico Rápido
 </div>
-<div style="font-size:13px;color:#50507a;margin-bottom:16px;">
+<div style="font-size:13px;color:#2f5f98;margin-bottom:16px;">
   Baseado nos seus dados — estimativas calculadas com metodologia financeira.
 </div>
 """, unsafe_allow_html=True)
@@ -149,21 +62,21 @@ st.markdown(f"""
     <div class="choque-icon">💸</div>
     <div class="choque-value">{perda_low_fmt} – {perda_high_fmt}</div>
     <div class="choque-label">por mês em potencial não realizado<br>
-      <span style="color:#404058;font-size:11px;">margem perdida + clientes inativos + cancelamentos</span>
+      <span style="color:#000000;font-size:11px;">margem perdida + clientes inativos + cancelamentos</span>
     </div>
   </div>
   <div class="choque-item">
     <div class="choque-icon">⚠️</div>
     <div class="choque-value">{n_itens} {'item' if n_itens == 1 else 'itens'}</div>
     <div class="choque-label">com alta venda e baixa margem<br>
-      <span style="color:#404058;font-size:11px;">você trabalha mais para ganhar menos</span>
+      <span style="color:#000000;font-size:11px;">você trabalha mais para ganhar menos</span>
     </div>
   </div>
   <div class="choque-item">
     <div class="choque-icon">📉</div>
     <div class="choque-value">{pct_churn:.0f}%</div>
     <div class="choque-label">dos clientes não voltaram a pedir<br>
-      <span style="color:#404058;font-size:11px;">{choque['n_inativos']} clientes inativos há mais de 30 dias</span>
+      <span style="color:#000000;font-size:11px;">{choque['n_inativos']} clientes inativos há mais de 30 dias</span>
     </div>
   </div>
 </div>
@@ -242,8 +155,8 @@ with col1:
       </div>
       <div style="font-size:28px;margin-bottom:8px;">🚚</div>
       <div style="font-family:'Syne',Inter;font-size:16px;font-weight:700;
-        color:#e2e2f0;margin-bottom:8px;">Operação</div>
-      <p style="font-size:13px;color:#60607a;line-height:1.6;margin-bottom:14px;">
+        color:#FFFFFF;margin-bottom:8px;">Operação</div>
+      <p style="font-size:13px;color:#FFFFFF;line-height:1.6;margin-bottom:14px;">
         Veja onde sua operação perde tempo e aumenta cancelamentos.
         {'Diagnóstico parcial disponível.' if modo=='demo' else 'Diagnóstico completo por bairro e horário.'}
       </p>
@@ -259,8 +172,8 @@ with col2:
       </div>
       <div style="font-size:28px;margin-bottom:8px;">💰</div>
       <div style="font-family:'Syne',Inter;font-size:16px;font-weight:700;
-        color:#e2e2f0;margin-bottom:8px;">Lucratividade</div>
-      <p style="font-size:13px;color:#60607a;line-height:1.6;margin-bottom:14px;">
+        color:#FFFFFF;margin-bottom:8px;">Lucratividade</div>
+      <p style="font-size:13px;color:#FFFFFF;line-height:1.6;margin-bottom:14px;">
         Descubra quais pratos constroem — ou destroem — sua margem.
         {'Visão geral com teaser de problemas.' if modo=='demo' else 'Matriz completa + plano de ação por item.'}
       </p>
@@ -276,8 +189,8 @@ with col3:
       </div>
       <div style="font-size:28px;margin-bottom:8px;">❤️</div>
       <div style="font-family:'Syne',Inter;font-size:16px;font-weight:700;
-        color:#e2e2f0;margin-bottom:8px;">Fidelização</div>
-      <p style="font-size:13px;color:#60607a;line-height:1.6;margin-bottom:14px;">
+        color:#FFFFFF;margin-bottom:8px;">Fidelização</div>
+      <p style="font-size:13px;color:#FFFFFF;line-height:1.6;margin-bottom:14px;">
         Entenda por que seus clientes somem e como trazê-los de volta.
         {'Taxa de retorno e tempo médio.' if modo=='demo' else 'Cohort completo + lista de clientes para recuperar.'}
       </p>
@@ -301,10 +214,10 @@ if modo == "demo":
         color:#f0f0ff;margin-bottom:8px;">
         Quer ver o diagnóstico completo?
       </div>
-      <p style="font-size:15px;color:#60607a;margin-bottom:6px;">
+      <p style="font-size:15px;color:#FFFFFF;margin-bottom:6px;">
         Margem real por item · Plano de ação priorizado · Lista de clientes para recuperar
       </p>
-      <p style="font-size:13px;color:#40404e;margin-bottom:28px;">
+      <p style="font-size:13px;color:#FFFFFF;margin-bottom:28px;">
         Tudo em uma sessão de 30 minutos. Sem enrolação.
       </p>
       <a href="https://wa.me/5511999999999?text=Ol%C3%A1!%20Quero%20ver%20o%20diagn%C3%B3stico%20completo%20do%20meu%20delivery."
@@ -326,7 +239,7 @@ else:
         align-items:center;gap:16px;">
       <div style="font-size:32px;">✅</div>
       <div>
-        <div style="font-family:'Syne',Inter;font-size:16px;font-weight:700;color:#e2e2f0;">
+        <div style="font-family:'Syne',Inter;font-size:16px;font-weight:700;color:#2f5f98;">
           Acesso Premium ativo — {nome}
         </div>
         <div style="font-size:13px;color:#50507a;margin-top:4px;">

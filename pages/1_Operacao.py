@@ -41,10 +41,10 @@ tag_html = f'<div class="{"tag-demo" if modo == "demo" else "tag-premium"}">{"De
 st.markdown(f"""
 {tag_html}
 <div style="font-family:'Syne',sans-serif;font-size:28px;font-weight:800;
-  color:#e2e2f0;line-height:1.2;margin-bottom:6px;">
+  color:#2f5f98;line-height:1.2;margin-bottom:6px;">
   🚚 Operação & Logística
 </div>
-<div style="color:#50507a;font-size:14px;margin-bottom:28px;">
+<div style="color:#2f5f98;font-size:14px;margin-bottom:28px;">
   {"Visão geral da sua operação. Diagnóstico detalhado disponível no plano completo." if modo == "demo"
    else "Diagnóstico completo — tempo por bairro, cancelamentos e horários críticos."}
 </div>
@@ -79,35 +79,48 @@ st.markdown('<div class="section-header">📅 Cancelamentos por Dia da Semana</d
 order_days = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
 label_days = ["Seg","Ter","Qua","Qui","Sex","Sáb","Dom"]
 
-cancel_dia = (
+dia_stats = (
     df.groupby("Dia Semana")["is_cancelado"]
-    .mean()
+    .agg(total="count", cancelados="sum")
     .reindex(order_days)
     .reset_index()
 )
-cancel_dia.columns  = ["Dia", "Taxa"]
-cancel_dia["Label"] = label_days
-cancel_dia["Pct"]   = (cancel_dia["Taxa"] * 100).round(1)
+dia_stats["entregues"] = dia_stats["total"] - dia_stats["cancelados"]
+dia_stats["Label"]     = label_days
+dia_stats["pct_label"] = (dia_stats["cancelados"] / dia_stats["total"] * 100).round(1)
 
-fig_dias = go.Figure(go.Bar(
-    x=cancel_dia["Label"],
-    y=cancel_dia["Pct"],
-    marker=dict(
-        color=cancel_dia["Pct"],
-        colorscale=[[0,"#34d399"],[0.5,"#f59e0b"],[1,"#f87171"]],
-    ),
-    text=cancel_dia["Pct"].apply(lambda x: f"{x:.1f}%"),
+fig_dias = go.Figure()
+fig_dias.add_trace(go.Bar(
+    name="Entregues",
+    x=dia_stats["Label"],
+    y=dia_stats["entregues"],
+    marker_color="#005737",
+    text=dia_stats["total"],
     textposition="outside",
-    hovertemplate="%{x}: %{y:.1f}% de cancelamento<extra></extra>",
+    hovertemplate="%{x}<br>Entregues: %{y}<extra></extra>",
+))
+fig_dias.add_trace(go.Bar(
+    name="Cancelados",
+    x=dia_stats["Label"],
+    y=dia_stats["cancelados"],
+    marker_color="#940000",
+    text=dia_stats["pct_label"].apply(lambda x: f"{x:.1f}%"),
+    textposition="inside",
+    hovertemplate="%{x}<br>Cancelados: %{y} (%{text})<extra></extra>",
 ))
 fig_dias.update_layout(
+    barmode="stack",
     height=280,
     margin=dict(l=0, r=0, t=10, b=0),
     paper_bgcolor="rgba(0,0,0,0)",
     plot_bgcolor="rgba(0,0,0,0)",
     xaxis=dict(showgrid=False, color="#9090a8"),
-    yaxis=dict(showgrid=True, gridcolor="#1a1a28", color="#50507a", ticksuffix="%"),
+    yaxis=dict(showgrid=True, gridcolor="#1a1a28", color="#50507a", title="Pedidos"),
     font=dict(family="DM Sans", color="#9090a8"),
+    legend=dict(
+        orientation="h", yanchor="bottom", y=1.02,
+        xanchor="right", x=1, font=dict(size=11),
+    ),
 )
 
 col_g, col_insight = st.columns([2, 1])
@@ -116,14 +129,14 @@ with col_g:
     st.plotly_chart(fig_dias, use_container_width=True)
 
 with col_insight:
-    pior = cancel_dia.loc[cancel_dia["Pct"].idxmax()]
+    pior = dia_stats.loc[dia_stats["pct_label"].idxmax()]
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
 
     st.markdown(f"""
     <div class="insight yellow">
       <div class="insight-title">⚠️ Dia mais crítico: {pior['Label']}</div>
       <div class="insight-text">
-        {pior['Pct']:.1f}% de cancelamentos — o pior da semana.
+        {pior['pct_label']:.1f}% de cancelamentos — o pior da semana.
         Pode indicar sobrecarga operacional ou problema de estoque nesse dia.
       </div>
     </div>
@@ -150,12 +163,12 @@ with col_insight:
         </div>
         """, unsafe_allow_html=True)
     else:
-        melhor = cancel_dia.loc[cancel_dia["Pct"].idxmin()]
+        melhor = dia_stats.loc[dia_stats["pct_label"].idxmin()]
         st.markdown(f"""
         <div class="insight green">
           <div class="insight-title">✅ Melhor dia: {melhor['Label']}</div>
           <div class="insight-text">
-            Apenas {melhor['Pct']:.1f}% de cancelamentos.
+            Apenas {melhor['pct_label']:.1f}% de cancelamentos.
             Entenda o que funciona aqui e replique nos dias críticos.
           </div>
         </div>
@@ -332,16 +345,16 @@ else:
         .reset_index()
         .rename(columns={"mean":"Taxa","count":"Pedidos"})
     )
-    cancel_hora["Pct"] = (cancel_hora["Taxa"] * 100).round(1)
+    cancel_hora["pct_label"] = (cancel_hora["Taxa"] * 100).round(1)
 
     fig_hora = go.Figure(go.Bar(
         x=cancel_hora["Hora"],
-        y=cancel_hora["Pct"],
+        y=cancel_hora["pct_label"],
         marker=dict(
-            color=cancel_hora["Pct"],
+            color=cancel_hora["pct_label"],
             colorscale=[[0,"#34d399"],[0.5,"#f59e0b"],[1,"#f87171"]],
         ),
-        text=cancel_hora["Pct"].apply(lambda x: f"{x:.0f}%"),
+        text=cancel_hora["pct_label"].apply(lambda x: f"{x:.0f}%"),
         textposition="outside",
         customdata=cancel_hora["Pedidos"],
         hovertemplate="Hora %{x}h<br>Cancelamento: %{y:.1f}%<br>Pedidos: %{customdata}<extra></extra>",
@@ -358,13 +371,13 @@ else:
     )
     st.plotly_chart(fig_hora, use_container_width=True)
 
-    hora_pico = cancel_hora.loc[cancel_hora["Pct"].idxmax()]
+    hora_pico = cancel_hora.loc[cancel_hora["pct_label"].idxmax()]
     st.markdown(f"""
     <div class="insight yellow">
       <div class="insight-title">⚠️ Horário crítico: {hora_pico['Hora']:.0f}h</div>
       <div class="insight-text">
         Pico de cancelamentos às <strong>{hora_pico['Hora']:.0f}h</strong>
-        com {hora_pico['Pct']:.1f}% — maior taxa do dia.
+        com {hora_pico['pct_label']:.1f}% — maior taxa do dia.
         Reforce equipe ou reduza o raio de entrega nesse período.
       </div>
     </div>
