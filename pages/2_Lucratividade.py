@@ -1,354 +1,392 @@
 """
-Módulo Lucratividade — Engenharia de Cardápio e Margens
+Módulo Lucratividade — Demo parcial / Premium completo
 """
 
 import streamlit as st
 import pandas as pd
-import numpy as np
-import plotly.express as px
 import plotly.graph_objects as go
 import sys, os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from utils import generate_mock_ifood_data, process_ifood_data, ITENS_CARDAPIO
+from utils import (
+    generate_mock_ifood_data, process_ifood_data, get_kpis,
+    detectar_modo, inject_css, render_sidebar, render_lock_card,
+    ITENS_CARDAPIO, MARGEM_PROXY,
+)
 
-# ─────────────────────────────────────────────
-#  CONFIG
-# ─────────────────────────────────────────────
+# ── Config ────────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Lucratividade | DeliveryPro",
     page_icon="💰",
     layout="wide",
+    initial_sidebar_state="expanded",
 )
 
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap');
-html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; }
-.stApp { background: #0a0a0f; color: #e8e8f0; }
-[data-testid="stSidebar"] { background: #111118 !important; border-right: 1px solid #1e1e2e; }
-[data-testid="metric-container"] { background: #111118 !important; border: 1px solid #1e1e2e !important; border-radius: 10px !important; padding: 16px !important; }
-[data-testid="stMetricValue"] { font-family: 'Syne', sans-serif !important; color: #34d399 !important; }
-h1, h2, h3 { font-family: 'Syne', sans-serif !important; color: #e8e8f0 !important; }
-.section-header { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 700; color: #e8e8f0; margin: 28px 0 14px 0; padding-bottom: 10px; border-bottom: 1px solid #1e1e2e; }
-.quadrant-label { font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700; padding: 6px 12px; border-radius: 6px; display: inline-block; margin-bottom: 6px; }
-.card-estrela { background: rgba(52,211,153,0.1); border: 1px solid rgba(52,211,153,0.3); border-radius: 10px; padding: 16px; margin: 8px 0; }
-.card-problema { background: rgba(248,113,113,0.08); border: 1px solid rgba(248,113,113,0.25); border-radius: 10px; padding: 16px; margin: 8px 0; }
-.card-cavalo { background: rgba(167,139,250,0.08); border: 1px solid rgba(167,139,250,0.25); border-radius: 10px; padding: 16px; margin: 8px 0; }
-.card-item-title { font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700; color: #e8e8f0; }
-.card-item-sub { font-size: 12px; color: #70708a; margin-top: 3px; }
-.vazamento-box { background: linear-gradient(135deg, rgba(248,113,113,0.08), rgba(245,158,11,0.06)); border: 1px solid rgba(248,113,113,0.2); border-radius: 12px; padding: 24px; margin: 16px 0; }
-.vazamento-title { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 800; color: #f87171; margin-bottom: 6px; }
-.vazamento-value { font-family: 'Syne', sans-serif; font-size: 36px; font-weight: 800; color: #f59e0b; }
-</style>
-""", unsafe_allow_html=True)
+inject_css()
+render_sidebar(active="lucratividade")
+acesso = detectar_modo()
+modo   = acesso["modo"]
 
-# ─────────────────────────────────────────────
-#  DADOS
-# ─────────────────────────────────────────────
+# ── Dados ─────────────────────────────────────────────────────────────────────
 if "df_main" not in st.session_state:
-    df_raw = generate_mock_ifood_data(800)
-    st.session_state["df_main"] = process_ifood_data(df_raw)
+    st.session_state["df_main"] = process_ifood_data(generate_mock_ifood_data(800))
 
-df = st.session_state["df_main"].copy()
-
-# ─────────────────────────────────────────────
-#  SIDEBAR
-# ─────────────────────────────────────────────
-with st.sidebar:
-    st.markdown("""
-    <div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:#e8e8f0;padding:8px 0;">
-        💰 Lucratividade
-    </div>
-    """, unsafe_allow_html=True)
-    st.markdown("---")
-    st.page_link("streamlit_app.py",         label="🏠  Visão Geral")
-    st.page_link("pages/1_Operacao.py",      label="🚚  Operação")
-    st.page_link("pages/2_Lucratividade.py", label="💰  Lucratividade")
-    st.page_link("pages/3_Fidelizacao.py",   label="❤️  Fidelização")
-    st.markdown("---")
-
-    st.markdown("**🔍 Filtros**")
-    min_date = df["Data do Pedido"].min().date()
-    max_date = df["Data do Pedido"].max().date()
-    date_range = st.date_input("Período", value=(min_date, max_date), min_value=min_date, max_value=max_date)
-
-    # Taxa de custo padrão (editável)
-    custo_pct = st.slider(
-        "Custo médio do produto (% do preço)",
-        min_value=20, max_value=60, value=38,
-        help="Percentual de custo dos ingredientes sobre o preço de venda"
-    )
-
-if len(date_range) == 2:
-    df = df[(df["Data do Pedido"].dt.date >= date_range[0]) & (df["Data do Pedido"].dt.date <= date_range[1])]
-
+df    = st.session_state["df_main"]
 df_ok = df[~df["is_cancelado"]].copy()
+kpis  = get_kpis(df)
 
-# ─────────────────────────────────────────────
-#  HEADER
-# ─────────────────────────────────────────────
-st.markdown("""
-<div style="margin-bottom:28px;">
-    <div style="font-family:'Syne',sans-serif;font-size:30px;font-weight:800;color:#e8e8f0;line-height:1.2;">
-        💰 Engenharia de Cardápio
-    </div>
-    <div style="color:#60607a;font-size:15px;margin-top:6px;">
-        Saiba exatamente quais pratos constroem — ou destroem — sua margem.
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
-# ─────────────────────────────────────────────
-#  CALCULAR MÉTRICAS POR ITEM
-# ─────────────────────────────────────────────
-
+# ── Calcular stats por item (necessário nos dois modos) ───────────────────────
 item_stats = (
     df_ok.groupby("Nome do Item")
     .agg(
-        Vendas=("Nome do Item", "count"),
-        Receita=("Valor dos Itens", "sum"),
-        Receita_Media=("Valor dos Itens", "mean"),
-        Comissao=("Comissão iFood", "sum"),
+        vendas   =("Nome do Item", "count"),
+        receita  =("Valor dos Itens", "sum"),
+        comissao =("Comissão iFood", "sum"),
     )
     .reset_index()
 )
-
-# Enriquecer com custo estimado
-def get_margem(item_name, receita_media, custo_percentual):
-    if item_name in ITENS_CARDAPIO:
-        custo = ITENS_CARDAPIO[item_name]["custo"]
-        preco = ITENS_CARDAPIO[item_name]["preco"]
-        margem_bruta = (preco - custo) / preco * 100
-    else:
-        margem_bruta = 100 - custo_percentual
-    return margem_bruta
-
-item_stats["Margem Bruta (%)"] = item_stats.apply(
-    lambda r: get_margem(r["Nome do Item"], r["Receita_Media"], custo_pct), axis=1
+item_stats["ticket"]  = item_stats["receita"] / item_stats["vendas"]
+item_stats["margem"]  = item_stats["Nome do Item"].apply(
+    lambda n: (ITENS_CARDAPIO[n]["preco"] - ITENS_CARDAPIO[n]["custo"]) / ITENS_CARDAPIO[n]["preco"]
+    if n in ITENS_CARDAPIO else MARGEM_PROXY
 )
-item_stats["Receita Líquida"] = item_stats["Receita"] - item_stats["Comissao"]
-item_stats["Margem Líquida (%)"] = (item_stats["Receita Líquida"] / item_stats["Receita"] * 100).round(1)
+item_stats["rec_liq"] = item_stats["receita"] - item_stats["comissao"]
 
-# Percentis para classificação
-mediana_vendas = item_stats["Vendas"].median()
-mediana_margem = item_stats["Margem Bruta (%)"].median()
+med_v = item_stats["vendas"].median()
+med_m = item_stats["margem"].median()
 
 def classificar(row):
-    alto_volume = row["Vendas"] >= mediana_vendas
-    alta_margem = row["Margem Bruta (%)"] >= mediana_margem
-    if alto_volume and alta_margem:
-        return "⭐ Estrela"
-    elif not alto_volume and alta_margem:
-        return "💎 Potencial"
-    elif alto_volume and not alta_margem:
-        return "🐴 Cavalo de Batalha"
-    else:
-        return "❌ Problema"
+    alto_v = row["vendas"]  >= med_v
+    alta_m = row["margem"]  >= med_m
+    if   alto_v and alta_m:  return "⭐ Estrela"
+    elif not alto_v and alta_m: return "💎 Potencial"
+    elif alto_v and not alta_m: return "🐴 Cavalo de Batalha"
+    else:                    return "❌ Problema"
 
-item_stats["Categoria"] = item_stats.apply(classificar, axis=1)
+item_stats["categoria"] = item_stats.apply(classificar, axis=1)
 
-# ─────────────────────────────────────────────
-#  KPIs
-# ─────────────────────────────────────────────
-receita_total  = item_stats["Receita"].sum()
-receita_liq    = item_stats["Receita Líquida"].sum()
-margem_media   = (receita_liq / receita_total * 100) if receita_total else 0
-comissao_total = item_stats["Comissao"].sum()
+# ── Header ────────────────────────────────────────────────────────────────────
+tag_html = f'<div class="{"tag-demo" if modo == "demo" else "tag-premium"}">{"Demo" if modo == "demo" else "Premium"}</div>'
 
-# "Vazamento": receita perdida em itens classificados como Problema (baixa margem, baixo volume)
-items_problema = item_stats[item_stats["Categoria"] == "❌ Problema"]
-vazamento = items_problema["Receita"].sum() * (1 - items_problema["Margem Bruta (%)"].mean() / 100)
-
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Receita Total no Período", f"R$ {receita_total:,.0f}".replace(",", "."))
-c2.metric("Receita Líquida (após iFood)", f"R$ {receita_liq:,.0f}".replace(",", "."))
-c3.metric("Margem Líquida Média", f"{margem_media:.1f}%")
-c4.metric("Comissão Total Paga ao iFood", f"R$ {comissao_total:,.0f}".replace(",", "."))
-
-# ─────────────────────────────────────────────
-#  MATRIZ DE ENGENHARIA DE CARDÁPIO
-# ─────────────────────────────────────────────
-st.markdown('<div class="section-header">🎯 Matriz de Cardápio — Volume vs. Margem</div>', unsafe_allow_html=True)
-
-COLOR_MAP = {
-    "⭐ Estrela":            "#34d399",
-    "💎 Potencial":          "#a78bfa",
-    "🐴 Cavalo de Batalha":  "#f59e0b",
-    "❌ Problema":           "#f87171",
-}
-
-fig_matrix = go.Figure()
-
-for cat, color in COLOR_MAP.items():
-    subset = item_stats[item_stats["Categoria"] == cat]
-    if len(subset) == 0:
-        continue
-    fig_matrix.add_trace(go.Scatter(
-        x=subset["Vendas"],
-        y=subset["Margem Bruta (%)"],
-        mode="markers+text",
-        name=cat,
-        marker=dict(
-            size=subset["Receita"] / subset["Receita"].max() * 42 + 14,
-            color=color,
-            opacity=0.85,
-            line=dict(width=1, color="rgba(0,0,0,0.3)"),
-        ),
-        text=subset["Nome do Item"].str.replace("Pizza ", "🍕 ").str.replace("Hamburger ", "🍔 "),
-        textposition="top center",
-        textfont=dict(size=10, color="#c0c0d8"),
-        customdata=subset[["Receita", "Receita Líquida", "Margem Líquida (%)"]].values,
-        hovertemplate=(
-            "<b>%{text}</b><br>"
-            "Vendas: %{x}<br>"
-            "Margem Bruta: %{y:.1f}%<br>"
-            "Receita: R$ %{customdata[0]:,.0f}<br>"
-            "Rec. Líquida: R$ %{customdata[1]:,.0f}<br>"
-            "Margem Líquida: %{customdata[2]:.1f}%<extra></extra>"
-        ),
-    ))
-
-# Linhas de referência (medianas)
-fig_matrix.add_vline(x=mediana_vendas, line_dash="dot", line_color="#2a2a4a", line_width=1.5)
-fig_matrix.add_hline(y=mediana_margem, line_dash="dot", line_color="#2a2a4a", line_width=1.5)
-
-# Anotações dos quadrantes
-fig_matrix.add_annotation(x=item_stats["Vendas"].max()*0.9, y=item_stats["Margem Bruta (%)"].max()*0.97,
-    text="⭐ ESTRELAS", font=dict(color="#34d399", size=11, family="Syne"), showarrow=False)
-fig_matrix.add_annotation(x=item_stats["Vendas"].max()*0.07, y=item_stats["Margem Bruta (%)"].max()*0.97,
-    text="💎 POTENCIAL", font=dict(color="#a78bfa", size=11, family="Syne"), showarrow=False)
-fig_matrix.add_annotation(x=item_stats["Vendas"].max()*0.9, y=item_stats["Margem Bruta (%)"].min()*1.1,
-    text="🐴 CAVALOS", font=dict(color="#f59e0b", size=11, family="Syne"), showarrow=False)
-fig_matrix.add_annotation(x=item_stats["Vendas"].max()*0.07, y=item_stats["Margem Bruta (%)"].min()*1.1,
-    text="❌ PROBLEMA", font=dict(color="#f87171", size=11, family="Syne"), showarrow=False)
-
-fig_matrix.update_layout(
-    height=480,
-    margin=dict(l=0, r=0, t=8, b=0),
-    paper_bgcolor="rgba(0,0,0,0)",
-    plot_bgcolor="#0d0d18",
-    xaxis=dict(title="Volume de Vendas (pedidos)", showgrid=True, gridcolor="#1a1a28", color="#70708a"),
-    yaxis=dict(title="Margem Bruta (%)", showgrid=True, gridcolor="#1a1a28", color="#70708a"),
-    legend=dict(
-        bgcolor="rgba(17,17,24,0.9)", bordercolor="#2a2a4a", borderwidth=1,
-        font=dict(color="#9090a8", size=11)
-    ),
-    font=dict(family="DM Sans"),
-    hovermode="closest",
-)
-st.plotly_chart(fig_matrix, use_container_width=True)
-
-st.markdown("""
-<div style="display:flex;gap:20px;flex-wrap:wrap;margin-top:-8px;margin-bottom:20px;">
-    <span style="font-size:12px;color:#60607a;">⭐ <span style="color:#34d399;">Estrelas</span>: alto volume + alta margem — promova mais</span>
-    <span style="font-size:12px;color:#60607a;">💎 <span style="color:#a78bfa;">Potencial</span>: boa margem, mas pouco pedido — divulgue</span>
-    <span style="font-size:12px;color:#60607a;">🐴 <span style="color:#f59e0b;">Cavalos</span>: muito vendido, margem baixa — revise preço</span>
-    <span style="font-size:12px;color:#60607a;">❌ <span style="color:#f87171;">Problema</span>: baixo volume e margem ruim — considere remover</span>
+st.markdown(f"""
+{tag_html}
+<div style="font-family:'Syne',sans-serif;font-size:28px;font-weight:800;
+  color:#e2e2f0;line-height:1.2;margin-bottom:6px;">
+  💰 Lucratividade & Cardápio
+</div>
+<div style="color:#50507a;font-size:14px;margin-bottom:28px;">
+  {"Visão geral de faturamento e volume. Análise de margem disponível no plano completo." if modo == "demo"
+   else "Diagnóstico completo — margem por item, matriz de cardápio e plano de ação."}
 </div>
 """, unsafe_allow_html=True)
 
-# ─────────────────────────────────────────────
-#  VAZAMENTO DE LUCRO
-# ─────────────────────────────────────────────
-st.markdown('<div class="section-header">🚨 Vazamento de Lucro</div>', unsafe_allow_html=True)
+# ─────────────────────────────────────────────────────────────────────────────
+#  SEÇÃO 1 — KPIs (ambos os modos)
+# ─────────────────────────────────────────────────────────────────────────────
+st.markdown('<div class="section-header">📊 Números Gerais</div>', unsafe_allow_html=True)
 
-col_v, col_r = st.columns([1, 2])
+receita_total = item_stats["receita"].sum()
+receita_liq   = item_stats["rec_liq"].sum()
+margem_media  = receita_liq / receita_total * 100 if receita_total else 0
+comissao_tot  = item_stats["comissao"].sum()
 
-with col_v:
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("Receita Total no Período",
+    f"R$ {receita_total:,.0f}".replace(",","."))
+c2.metric("Receita Líquida (após iFood)",
+    f"R$ {receita_liq:,.0f}".replace(",","."))
+c3.metric("Margem Líquida Média",
+    f"{margem_media:.1f}%")
+c4.metric("Comissão Total paga ao iFood",
+    f"R$ {comissao_tot:,.0f}".replace(",","."),
+    delta="Custo da plataforma", delta_color="off")
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  SEÇÃO 2 — Receita por item (ambos os modos, mas demo esconde margem)
+# ─────────────────────────────────────────────────────────────────────────────
+st.markdown('<div class="section-header">📦 Vendas por Item</div>', unsafe_allow_html=True)
+
+top_itens = item_stats.sort_values("receita", ascending=True).tail(10)
+
+fig_itens = go.Figure(go.Bar(
+    y=top_itens["Nome do Item"],
+    x=top_itens["receita"],
+    orientation="h",
+    marker=dict(color="#a78bfa", opacity=0.85),
+    text=top_itens["receita"].apply(lambda x: f"R$ {x:,.0f}".replace(",",".")),
+    textposition="outside",
+    customdata=top_itens["vendas"],
+    hovertemplate="%{y}<br>Receita: R$ %{x:,.0f}<br>Pedidos: %{customdata}<extra></extra>",
+))
+fig_itens.update_layout(
+    height=340,
+    margin=dict(l=0, r=100, t=8, b=0),
+    paper_bgcolor="rgba(0,0,0,0)",
+    plot_bgcolor="rgba(0,0,0,0)",
+    xaxis=dict(showgrid=True, gridcolor="#1a1a28", color="#50507a", tickprefix="R$ "),
+    yaxis=dict(showgrid=False, color="#9090a8"),
+    font=dict(family="DM Sans", color="#9090a8"),
+)
+st.plotly_chart(fig_itens, use_container_width=True)
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  SEÇÃO 3 — Teaser de problema (ambos os modos, profundidade diferente)
+# ─────────────────────────────────────────────────────────────────────────────
+cavalos    = item_stats[item_stats["categoria"] == "🐴 Cavalo de Batalha"]
+problemas  = item_stats[item_stats["categoria"] == "❌ Problema"]
+n_risco    = len(cavalos) + len(problemas)
+
+if modo == "demo":
+    # Mostra o número do problema, mas não revela quais itens são
     st.markdown(f"""
-    <div class="vazamento-box">
-        <div class="vazamento-title">💸 Dinheiro Perdido</div>
-        <div style="font-size:13px;color:#80807a;margin-bottom:12px;">
-            Estimativa de receita que poderia ser margem — mas foi para custo alto
-        </div>
-        <div class="vazamento-value">R$ {vazamento:,.0f}".replace(",",".")</div>
-        <div style="font-size:12px;color:#60607a;margin-top:8px;">
-            Nos itens de baixa performance no período
-        </div>
-        <div style="margin-top:16px;padding-top:16px;border-top:1px solid rgba(248,113,113,0.15);">
-            <div style="font-size:13px;color:#9090a8;line-height:1.6;">
-                Se você ajustar o preço ou custo dos itens <strong style="color:#f87171;">Problema</strong>,
-                essa quantia pode virar lucro real no seu bolso.
-            </div>
-        </div>
-    </div>
-    """.replace('".replace(",",".")', ''), unsafe_allow_html=True)
-
-    # Corrigindo o display
-    st.markdown(f"""
-    <div style="background:rgba(248,113,113,0.06);border:1px solid rgba(248,113,113,0.2);border-radius:10px;padding:20px;margin-top:8px;">
-        <div style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:#f59e0b;">
-            R$ {vazamento:,.0f}
-        </div>
-        <div style="font-size:12px;color:#60607a;margin-top:4px;">estimativa de lucro não realizado</div>
+    <div class="insight red">
+      <div class="insight-title">🔥 {n_risco} {'item identificado' if n_risco == 1 else 'itens identificados'} com ineficiência de margem</div>
+      <div class="insight-text">
+        Esses produtos representam uma parte relevante do seu volume de vendas,
+        mas a margem estimada está abaixo da média — você trabalha mais para ganhar menos neles.
+        <br><br>
+        <span style="color:#404058;font-size:12px;">
+          🔒 Para ver quais são, quanto estão custando e o que ajustar,
+          acesse o diagnóstico completo.
+        </span>
+      </div>
     </div>
     """, unsafe_allow_html=True)
 
-with col_r:
-    # Barras de receita por item, coloridas por categoria
-    item_sorted = item_stats.sort_values("Receita", ascending=True).tail(10)
-    colors = [COLOR_MAP.get(c, "#9090a8") for c in item_sorted["Categoria"]]
+else:
+    # Premium: mostra breakdown real
+    col_a, col_b = st.columns(2)
+    with col_a:
+        st.markdown(f"""
+        <div class="insight red">
+          <div class="insight-title">🐴 {len(cavalos)} item(ns) — alto volume, margem baixa</div>
+          <div class="insight-text">
+            {', '.join(cavalos['Nome do Item'].head(3).tolist())}.
+            Vendem bem mas comprimem sua margem. Candidatos a revisão de preço.
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+    with col_b:
+        potenciais = item_stats[item_stats["categoria"] == "💎 Potencial"]
+        st.markdown(f"""
+        <div class="insight purple">
+          <div class="insight-title">💎 {len(potenciais)} item(ns) — boa margem, pouca visibilidade</div>
+          <div class="insight-text">
+            {', '.join(potenciais['Nome do Item'].head(3).tolist())}.
+            Margem acima da média mas baixo volume. Oportunidade não explorada.
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
 
-    fig_receita = go.Figure(go.Bar(
-        y=item_sorted["Nome do Item"],
-        x=item_sorted["Receita"],
-        orientation="h",
-        marker=dict(color=colors, opacity=0.85),
-        text=item_sorted["Categoria"],
-        textposition="outside",
-        textfont=dict(size=10),
-        customdata=item_sorted[["Margem Bruta (%)", "Receita Líquida"]].values,
-        hovertemplate="%{y}<br>Receita: R$ %{x:,.0f}<br>Margem: %{customdata[0]:.1f}%<br>Líquida: R$ %{customdata[1]:,.0f}<extra></extra>",
-    ))
-    fig_receita.update_layout(
-        height=360,
-        margin=dict(l=0, r=100, t=8, b=0),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        xaxis=dict(showgrid=True, gridcolor="#1a1a28", color="#50507a", tickprefix="R$ "),
-        yaxis=dict(showgrid=False, color="#9090a8"),
-        font=dict(family="DM Sans", color="#9090a8"),
-        title=dict(text="Top 10 Itens por Receita", font=dict(family="Syne", color="#e8e8f0", size=14), x=0),
-    )
-    st.plotly_chart(fig_receita, use_container_width=True)
+# ─────────────────────────────────────────────────────────────────────────────
+#  SEÇÃO 4 — DEMO: lock  |  PREMIUM: matriz completa + vazamento + plano
+# ─────────────────────────────────────────────────────────────────────────────
 
-# ─────────────────────────────────────────────
-#  TABELA DE AÇÃO
-# ─────────────────────────────────────────────
-st.markdown('<div class="section-header">📋 Plano de Ação por Item</div>', unsafe_allow_html=True)
+if modo == "demo":
+    st.markdown('<div class="section-header">🎯 Matriz de Cardápio</div>', unsafe_allow_html=True)
 
-def recomendar(row):
-    if row["Categoria"] == "⭐ Estrela":
-        return "✅ Destaque no cardápio e stories"
-    elif row["Categoria"] == "💎 Potencial":
-        return "📣 Promova com foto e descrição nova"
-    elif row["Categoria"] == "🐴 Cavalo de Batalha":
-        return "💡 Revise preço ou reduza custo de insumo"
-    else:
-        return "🗑️ Avalie retirar ou reformular"
+    # Scatter borrado
+    st.markdown('<div style="opacity:0.15;filter:blur(4px);pointer-events:none;">', unsafe_allow_html=True)
 
-item_stats["Recomendação"] = item_stats.apply(recomendar, axis=1)
-
-tabela = item_stats[[
-    "Nome do Item", "Categoria", "Vendas",
-    "Margem Bruta (%)", "Receita", "Recomendação"
-]].sort_values("Receita", ascending=False).copy()
-
-tabela["Receita"] = tabela["Receita"].apply(lambda x: f"R$ {x:,.0f}".replace(",", "."))
-tabela["Margem Bruta (%)"] = tabela["Margem Bruta (%)"].apply(lambda x: f"{x:.0f}%")
-tabela.columns = ["Item", "Quadrante", "Vendas", "Margem Bruta", "Receita Total", "Ação Recomendada"]
-
-st.dataframe(
-    tabela,
-    use_container_width=True,
-    hide_index=True,
-    column_config={
-        "Item":            st.column_config.TextColumn(width="medium"),
-        "Quadrante":       st.column_config.TextColumn(width="medium"),
-        "Vendas":          st.column_config.NumberColumn(width="small"),
-        "Margem Bruta":    st.column_config.TextColumn(width="small"),
-        "Receita Total":   st.column_config.TextColumn(width="medium"),
-        "Ação Recomendada":st.column_config.TextColumn(width="large"),
+    COLOR_MAP = {
+        "⭐ Estrela":           "#34d399",
+        "💎 Potencial":         "#a78bfa",
+        "🐴 Cavalo de Batalha": "#f59e0b",
+        "❌ Problema":          "#f87171",
     }
-)
+    fig_blur = go.Figure()
+    for cat, cor in COLOR_MAP.items():
+        sub = item_stats[item_stats["categoria"] == cat]
+        if len(sub) == 0:
+            continue
+        fig_blur.add_trace(go.Scatter(
+            x=sub["vendas"], y=sub["margem"] * 100,
+            mode="markers+text",
+            marker=dict(size=sub["receita"] / sub["receita"].max() * 40 + 12, color=cor, opacity=0.85),
+            text=sub["Nome do Item"],
+            textposition="top center",
+            textfont=dict(size=9, color="#c0c0d8"),
+        ))
+    fig_blur.update_layout(
+        height=340,
+        margin=dict(l=0, r=0, t=8, b=0),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="#0d0d18",
+        xaxis=dict(color="#70708a"), yaxis=dict(color="#70708a"),
+        showlegend=False,
+        font=dict(family="DM Sans"),
+    )
+    st.plotly_chart(fig_blur, use_container_width=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    render_lock_card(
+        titulo="Engenharia de Cardápio Completa",
+        itens_bloqueados=[
+            "Margem estimada real por item",
+            "Matriz Estrela / Potencial / Cavalo / Problema",
+            "Estimativa de vazamento de lucro mensal",
+            "Plano de ação item a item (ajustar preço, criar combo, remover)",
+        ],
+    )
+
+else:
+    # ── PREMIUM: Matriz interativa ────────────────────────────────────────
+    st.markdown('<div class="section-header">🎯 Matriz de Engenharia de Cardápio</div>', unsafe_allow_html=True)
+
+    COLOR_MAP = {
+        "⭐ Estrela":           "#34d399",
+        "💎 Potencial":         "#a78bfa",
+        "🐴 Cavalo de Batalha": "#f59e0b",
+        "❌ Problema":          "#f87171",
+    }
+
+    fig_matrix = go.Figure()
+    for cat, cor in COLOR_MAP.items():
+        sub = item_stats[item_stats["categoria"] == cat]
+        if len(sub) == 0:
+            continue
+        fig_matrix.add_trace(go.Scatter(
+            x=sub["vendas"],
+            y=sub["margem"] * 100,
+            mode="markers+text",
+            name=cat,
+            marker=dict(
+                size=sub["receita"] / item_stats["receita"].max() * 42 + 14,
+                color=cor,
+                opacity=0.85,
+                line=dict(width=1, color="rgba(0,0,0,0.3)"),
+            ),
+            text=sub["Nome do Item"],
+            textposition="top center",
+            textfont=dict(size=10, color="#c0c0d8"),
+            customdata=sub[["receita","rec_liq","margem"]].values,
+            hovertemplate=(
+                "<b>%{text}</b><br>"
+                "Vendas: %{x}<br>"
+                "Margem Bruta: %{y:.1f}%<br>"
+                "Receita: R$ %{customdata[0]:,.0f}<br>"
+                "Rec. Líquida: R$ %{customdata[1]:,.0f}<extra></extra>"
+            ),
+        ))
+
+    # Linhas de mediana
+    fig_matrix.add_vline(x=med_v, line_dash="dot", line_color="#2a2a4a", line_width=1.5)
+    fig_matrix.add_hline(y=med_m * 100, line_dash="dot", line_color="#2a2a4a", line_width=1.5)
+
+    # Labels de quadrante
+    x_max = item_stats["vendas"].max()
+    y_max = item_stats["margem"].max() * 100
+    y_min = item_stats["margem"].min() * 100
+
+    for txt, x_pos, y_pos, cor in [
+        ("⭐ ESTRELAS",  x_max * 0.88, y_max * 0.97, "#34d399"),
+        ("💎 POTENCIAL", x_max * 0.05, y_max * 0.97, "#a78bfa"),
+        ("🐴 CAVALOS",   x_max * 0.88, y_min * 1.10, "#f59e0b"),
+        ("❌ PROBLEMA",  x_max * 0.05, y_min * 1.10, "#f87171"),
+    ]:
+        fig_matrix.add_annotation(
+            x=x_pos, y=y_pos, text=txt,
+            font=dict(color=cor, size=11, family="Syne"),
+            showarrow=False,
+        )
+
+    fig_matrix.update_layout(
+        height=460,
+        margin=dict(l=0, r=0, t=8, b=0),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="#0d0d18",
+        xaxis=dict(title="Volume de Vendas (pedidos)", showgrid=True,
+                   gridcolor="#1a1a28", color="#70708a"),
+        yaxis=dict(title="Margem Bruta (%)", showgrid=True,
+                   gridcolor="#1a1a28", color="#70708a"),
+        legend=dict(bgcolor="rgba(17,17,24,0.9)", bordercolor="#2a2a4a",
+                    borderwidth=1, font=dict(color="#9090a8", size=11)),
+        font=dict(family="DM Sans"),
+        hovermode="closest",
+    )
+    st.plotly_chart(fig_matrix, use_container_width=True)
+
+    st.markdown("""
+    <div style="display:flex;gap:20px;flex-wrap:wrap;margin-top:-8px;margin-bottom:8px;">
+      <span style="font-size:12px;color:#505068;">⭐ <span style="color:#34d399;">Estrelas</span>: alto volume + boa margem — promova mais</span>
+      <span style="font-size:12px;color:#505068;">💎 <span style="color:#a78bfa;">Potencial</span>: margem boa, volume baixo — divulgue</span>
+      <span style="font-size:12px;color:#505068;">🐴 <span style="color:#f59e0b;">Cavalos</span>: muito pedido, margem baixa — revise preço</span>
+      <span style="font-size:12px;color:#505068;">❌ <span style="color:#f87171;">Problema</span>: pouco volume e margem ruim — avalie remover</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ── PREMIUM: Vazamento de lucro ───────────────────────────────────────
+    st.markdown('<div class="section-header">🚨 Vazamento de Lucro</div>', unsafe_allow_html=True)
+
+    itens_problema_cat = item_stats[item_stats["categoria"].isin(["🐴 Cavalo de Batalha","❌ Problema"])]
+    vazamento = (itens_problema_cat["receita"] * (med_m - itens_problema_cat["margem"])).sum()
+    vazamento = max(vazamento, 0)
+
+    col_v, col_tabela = st.columns([1, 2])
+
+    with col_v:
+        st.markdown(f"""
+        <div style="background:rgba(248,113,113,0.06);border:1px solid rgba(248,113,113,0.18);
+          border-radius:12px;padding:24px 20px;text-align:center;">
+          <div style="font-size:13px;color:#80607a;margin-bottom:8px;text-transform:uppercase;
+            letter-spacing:1px;font-weight:600;">Estimativa de Lucro Não Realizado</div>
+          <div style="font-family:'Syne',sans-serif;font-size:34px;font-weight:800;color:#f59e0b;">
+            R$ {vazamento:,.0f}
+          </div>
+          <div style="font-size:12px;color:#404058;margin-top:6px;">no período analisado</div>
+          <div style="margin-top:16px;padding-top:14px;border-top:1px solid rgba(248,113,113,0.12);
+            font-size:13px;color:#70708a;line-height:1.6;text-align:left;">
+            Dinheiro que poderia ser lucro, mas foi absorvido por custo alto
+            nos itens de baixa eficiência. Ajustar preço ou custo converte
+            diretamente em margem.
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col_tabela:
+        # ── PREMIUM: Plano de ação por item ──────────────────────────────
+        def recomendar(row):
+            m = row["margem"] * 100
+            if row["categoria"] == "⭐ Estrela":
+                return "✅ Destaque no cardápio — não mexa no preço"
+            elif row["categoria"] == "💎 Potencial":
+                return "📣 Nova foto + descrição no app para aumentar visibilidade"
+            elif row["categoria"] == "🐴 Cavalo de Batalha":
+                if m < 25:
+                    return "💡 Aumentar preço 8–12% ou renegociar insumo"
+                else:
+                    return "💡 Criar versão premium para elevar ticket médio"
+            else:
+                return "🗑️ Avaliar remoção ou reformulação completa"
+
+        item_stats["Ação"] = item_stats.apply(recomendar, axis=1)
+
+        tabela = item_stats[["Nome do Item","categoria","vendas","margem","receita","Ação"]].copy()
+        tabela = tabela.sort_values("receita", ascending=False)
+        tabela["margem"]  = tabela["margem"].apply(lambda x: f"{x*100:.0f}%")
+        tabela["receita"] = tabela["receita"].apply(lambda x: f"R$ {x:,.0f}".replace(",","."))
+        tabela.columns    = ["Item","Quadrante","Vendas","Margem","Receita","Ação Recomendada"]
+
+        st.dataframe(
+            tabela,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Item":            st.column_config.TextColumn(width="medium"),
+                "Quadrante":       st.column_config.TextColumn(width="medium"),
+                "Vendas":          st.column_config.NumberColumn(width="small"),
+                "Margem":          st.column_config.TextColumn(width="small"),
+                "Receita":         st.column_config.TextColumn(width="medium"),
+                "Ação Recomendada":st.column_config.TextColumn(width="large"),
+            },
+        )
+
+    # Ajuste manual do master (só aparece se is_master e tiver texto)
+    ajuste = st.session_state.get("ajuste_manual", "")
+    if ajuste and acesso.get("is_master"):
+        st.markdown(f"""
+        <div class="insight purple" style="margin-top:16px;">
+          <div class="insight-title">🔎 Observações do Especialista</div>
+          <div class="insight-text">{ajuste}</div>
+        </div>
+        """, unsafe_allow_html=True)

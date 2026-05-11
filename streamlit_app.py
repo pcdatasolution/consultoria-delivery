@@ -1,21 +1,20 @@
 """
-Hub de Soluções — Landing Page Principal
-Consultoria de Dados para Restaurantes e Delivery
+DeliveryPro — Página Inicial / Landing
+Choque de realidade + upload + navegação
 """
 
 import streamlit as st
 import pandas as pd
-import plotly.express as px
 import plotly.graph_objects as go
 import sys, os
 
 sys.path.insert(0, os.path.dirname(__file__))
-from utils import generate_mock_ifood_data, process_ifood_data, get_kpis
+from utils import (
+    generate_mock_ifood_data, process_ifood_data, get_kpis,
+    calcular_choque, detectar_modo, inject_css, render_sidebar,
+)
 
-# ─────────────────────────────────────────────
-#  CONFIGURAÇÃO DA PÁGINA
-# ─────────────────────────────────────────────
-
+# ── Configuração da página ────────────────────────────────────────────────────
 st.set_page_config(
     page_title="DeliveryPro | Hub de Soluções",
     page_icon="🍕",
@@ -23,545 +22,187 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ─────────────────────────────────────────────
-#  CSS CUSTOMIZADO — Tema Dark Premium
-# ─────────────────────────────────────────────
+inject_css()
+render_sidebar(active="home")
+acesso = detectar_modo()
 
-st.markdown("""
-<style>
-/* Importar fonte premium */
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap');
-
-/* Reset e base */
-html, body, [class*="css"] {
-    font-family: 'DM Sans', sans-serif;
-}
-
-/* Fundo geral */
-.stApp {
-    background: #0a0a0f;
-    color: #e8e8f0;
-}
-
-/* Sidebar */
-[data-testid="stSidebar"] {
-    background: #111118 !important;
-    border-right: 1px solid #1e1e2e;
-}
-
-/* Hero section */
-.hero-container {
-    background: linear-gradient(135deg, #0f0f1a 0%, #1a0a2e 50%, #0f1a0a 100%);
-    border: 1px solid #2a1a4a;
-    border-radius: 16px;
-    padding: 52px 48px;
-    margin-bottom: 40px;
-    position: relative;
-    overflow: hidden;
-}
-
-.hero-container::before {
-    content: '';
-    position: absolute;
-    top: -50%;
-    left: -10%;
-    width: 50%;
-    height: 200%;
-    background: radial-gradient(ellipse, rgba(139, 92, 246, 0.08) 0%, transparent 70%);
-    pointer-events: none;
-}
-
-.hero-container::after {
-    content: '';
-    position: absolute;
-    bottom: -30%;
-    right: 5%;
-    width: 40%;
-    height: 150%;
-    background: radial-gradient(ellipse, rgba(34, 197, 94, 0.06) 0%, transparent 70%);
-    pointer-events: none;
-}
-
-.hero-badge {
-    display: inline-block;
-    background: rgba(139, 92, 246, 0.15);
-    border: 1px solid rgba(139, 92, 246, 0.4);
-    color: #a78bfa;
-    font-family: 'DM Sans', sans-serif;
-    font-size: 12px;
-    font-weight: 500;
-    letter-spacing: 1.5px;
-    text-transform: uppercase;
-    padding: 6px 14px;
-    border-radius: 20px;
-    margin-bottom: 20px;
-}
-
-.hero-title {
-    font-family: 'Syne', sans-serif;
-    font-size: clamp(32px, 4vw, 52px);
-    font-weight: 800;
-    line-height: 1.15;
-    color: #f0f0ff;
-    margin-bottom: 20px;
-    position: relative;
-}
-
-.hero-title span {
-    background: linear-gradient(135deg, #a78bfa, #34d399);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-}
-
-.hero-subtitle {
-    font-size: 17px;
-    font-weight: 300;
-    color: #9090a8;
-    line-height: 1.7;
-    max-width: 580px;
-    margin-bottom: 32px;
-}
-
-.hero-stats {
-    display: flex;
-    gap: 32px;
-    flex-wrap: wrap;
-}
-
-.hero-stat {
-    display: flex;
-    flex-direction: column;
-}
-
-.hero-stat-value {
-    font-family: 'Syne', sans-serif;
-    font-size: 26px;
-    font-weight: 700;
-    color: #34d399;
-}
-
-.hero-stat-label {
-    font-size: 12px;
-    color: #606078;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-/* Pilar cards */
-.pillar-card {
-    background: #111118;
-    border: 1px solid #1e1e2e;
-    border-radius: 12px;
-    padding: 28px 24px;
-    height: 100%;
-    transition: border-color 0.2s;
-    position: relative;
-}
-
-.pillar-card:hover {
-    border-color: #3a2a5e;
-}
-
-.pillar-icon {
-    font-size: 32px;
-    margin-bottom: 12px;
-    display: block;
-}
-
-.pillar-title {
-    font-family: 'Syne', sans-serif;
-    font-size: 18px;
-    font-weight: 700;
-    color: #e8e8f0;
-    margin-bottom: 8px;
-}
-
-.pillar-desc {
-    font-size: 14px;
-    color: #70708a;
-    line-height: 1.6;
-    margin-bottom: 14px;
-}
-
-.pillar-benefit {
-    font-size: 13px;
-    color: #34d399;
-    font-weight: 500;
-}
-
-/* Seção de problema */
-.problem-section {
-    background: #0d0d16;
-    border: 1px solid #1e1e2e;
-    border-radius: 12px;
-    padding: 36px 32px;
-    margin: 32px 0;
-}
-
-.problem-title {
-    font-family: 'Syne', sans-serif;
-    font-size: 24px;
-    font-weight: 700;
-    color: #e8e8f0;
-    margin-bottom: 8px;
-}
-
-.problem-subtitle {
-    color: #70708a;
-    font-size: 15px;
-    margin-bottom: 24px;
-}
-
-.pain-item {
-    display: flex;
-    align-items: flex-start;
-    gap: 12px;
-    padding: 12px 0;
-    border-bottom: 1px solid #1a1a28;
-}
-
-.pain-item:last-child {
-    border-bottom: none;
-}
-
-.pain-icon {
-    font-size: 20px;
-    flex-shrink: 0;
-    margin-top: 1px;
-}
-
-.pain-text {
-    font-size: 15px;
-    color: #9090a8;
-    line-height: 1.5;
-}
-
-.pain-text strong {
-    color: #e8e8f0;
-}
-
-/* CTA Section */
-.cta-section {
-    background: linear-gradient(135deg, #1a0a2e, #0a1a0f);
-    border: 1px solid #2a1a4a;
-    border-radius: 16px;
-    padding: 40px 36px;
-    text-align: center;
-    margin: 32px 0;
-}
-
-.cta-title {
-    font-family: 'Syne', sans-serif;
-    font-size: 28px;
-    font-weight: 800;
-    color: #f0f0ff;
-    margin-bottom: 12px;
-}
-
-.cta-subtitle {
-    color: #70708a;
-    font-size: 16px;
-    margin-bottom: 28px;
-}
-
-.wpp-button {
-    display: inline-block;
-    background: #25d366;
-    color: #000 !important;
-    font-family: 'Syne', sans-serif;
-    font-size: 15px;
-    font-weight: 700;
-    padding: 14px 32px;
-    border-radius: 8px;
-    text-decoration: none !important;
-    letter-spacing: 0.3px;
-    transition: background 0.2s, transform 0.1s;
-}
-
-.wpp-button:hover {
-    background: #20b85a;
-    transform: translateY(-1px);
-}
-
-/* Upload box */
-.upload-section {
-    background: #0d0d16;
-    border: 1px dashed #2a2a4a;
-    border-radius: 12px;
-    padding: 32px;
-    margin: 24px 0;
-    text-align: center;
-}
-
-.upload-title {
-    font-family: 'Syne', sans-serif;
-    font-size: 18px;
-    font-weight: 700;
-    color: #e8e8f0;
-    margin-bottom: 8px;
-}
-
-.upload-subtitle {
-    color: #60607a;
-    font-size: 14px;
-    margin-bottom: 20px;
-}
-
-/* Metric cards */
-[data-testid="metric-container"] {
-    background: #111118 !important;
-    border: 1px solid #1e1e2e !important;
-    border-radius: 10px !important;
-    padding: 16px !important;
-}
-
-[data-testid="stMetricValue"] {
-    font-family: 'Syne', sans-serif !important;
-    color: #34d399 !important;
-}
-
-/* Section headers */
-.section-header {
-    font-family: 'Syne', sans-serif;
-    font-size: 22px;
-    font-weight: 700;
-    color: #e8e8f0;
-    margin: 32px 0 16px 0;
-    padding-bottom: 12px;
-    border-bottom: 1px solid #1e1e2e;
-}
-
-/* Sidebar nav */
-[data-testid="stSidebarNav"] a {
-    color: #9090a8 !important;
-    font-family: 'DM Sans', sans-serif !important;
-}
-
-[data-testid="stSidebarNav"] a:hover,
-[data-testid="stSidebarNav"] a[aria-selected="true"] {
-    color: #a78bfa !important;
-    background: rgba(139, 92, 246, 0.08) !important;
-}
-
-/* Streamlit defaults override */
-div[data-testid="stMarkdownContainer"] p {
-    color: #9090a8;
-}
-
-h1, h2, h3 {
-    font-family: 'Syne', sans-serif !important;
-    color: #e8e8f0 !important;
-}
-
-.stSelectbox label, .stDateInput label, .stMultiSelect label {
-    color: #9090a8 !important;
-    font-size: 13px !important;
-}
-
-/* Plotly chart container */
-.js-plotly-plot {
-    border-radius: 8px;
-    overflow: hidden;
-}
-
-/* Divider */
-hr {
-    border-color: #1e1e2e !important;
-}
-</style>
-""", unsafe_allow_html=True)
-
-
-# ─────────────────────────────────────────────
-#  SIDEBAR
-# ─────────────────────────────────────────────
-
-with st.sidebar:
-    st.markdown("""
-    <div style="padding: 16px 0 8px;">
-        <div style="font-family:'Syne',sans-serif; font-size:20px; font-weight:800; color:#e8e8f0;">
-            🍕 DeliveryPro
-        </div>
-        <div style="font-size:12px; color:#50507a; letter-spacing:1px; text-transform:uppercase; margin-top:2px;">
-            Hub de Soluções
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown("---")
-    st.markdown("""
-    <div style="font-size:11px; color:#50507a; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">
-        Navegação
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.page_link("streamlit_app.py",      label="🏠  Visão Geral",     )
-    st.page_link("pages/1_Operacao.py",   label="🚚  Operação",        )
-    st.page_link("pages/2_Lucratividade.py", label="💰  Lucratividade",)
-    st.page_link("pages/3_Fidelizacao.py",label="❤️  Fidelização",    )
-
-    st.markdown("---")
-    st.markdown("""
-    <div style="font-size:12px; color:#50507a; line-height:1.6; padding:8px 0;">
-        Dados gerados com <strong style="color:#a78bfa;">simulação iFood</strong>.<br>
-        Suba seu CSV real para análise personalizada.
-    </div>
-    """, unsafe_allow_html=True)
-
-
-# ─────────────────────────────────────────────
-#  CARREGAR DADOS
-# ─────────────────────────────────────────────
-
+# ── Carregar / inicializar dados ──────────────────────────────────────────────
 if "df_main" not in st.session_state:
-    df_raw = generate_mock_ifood_data(800)
-    st.session_state["df_main"] = process_ifood_data(df_raw)
-    st.session_state["is_mock"] = True
+    st.session_state["df_main"]  = process_ifood_data(generate_mock_ifood_data(800))
+    st.session_state["is_mock"]  = True
 
-df = st.session_state["df_main"]
-kpis = get_kpis(df)
+df     = st.session_state["df_main"]
+kpis   = get_kpis(df)
+choque = calcular_choque(df)
 
-
-# ─────────────────────────────────────────────
-#  HERO SECTION
-# ─────────────────────────────────────────────
-
+# ─────────────────────────────────────────────────────────────────────────────
+#  HERO
+# ─────────────────────────────────────────────────────────────────────────────
 st.markdown("""
-<div class="hero-container">
-    <div class="hero-badge">📊 Consultoria de Dados para Delivery</div>
-    <h1 class="hero-title">
-        Transforme os dados do seu<br>
-        Delivery em <span>Lucro Real.</span>
-    </h1>
-    <p class="hero-subtitle">
-        Chega de abrir planilha e não saber o que fazer. Em menos de 5 minutos,
-        você entende onde está perdendo dinheiro — e como recuperar.
-    </p>
-    <div class="hero-stats">
-        <div class="hero-stat">
-            <span class="hero-stat-value">+23%</span>
-            <span class="hero-stat-label">Aumento médio de margem</span>
-        </div>
-        <div class="hero-stat">
-            <span class="hero-stat-value">-18%</span>
-            <span class="hero-stat-label">Redução em cancelamentos</span>
-        </div>
-        <div class="hero-stat">
-            <span class="hero-stat-value">+31%</span>
-            <span class="hero-stat-label">Retenção de clientes</span>
-        </div>
-    </div>
+<div style="
+    background: linear-gradient(135deg, #0c0c1a 0%, #160a28 55%, #0a160c 100%);
+    border: 1px solid #221840;
+    border-radius: 16px;
+    padding: 52px 48px 44px;
+    margin-bottom: 32px;
+    position: relative;
+    overflow: hidden;
+">
+  <!-- glow decorativo -->
+  <div style="position:absolute;top:-60%;left:-5%;width:45%;height:200%;
+    background:radial-gradient(ellipse,rgba(139,92,246,.07) 0%,transparent 70%);
+    pointer-events:none;"></div>
+  <div style="position:absolute;bottom:-40%;right:0;width:40%;height:180%;
+    background:radial-gradient(ellipse,rgba(34,197,94,.05) 0%,transparent 70%);
+    pointer-events:none;"></div>
+
+  <div style="display:inline-block;background:rgba(139,92,246,.12);
+    border:1px solid rgba(139,92,246,.35);color:#a78bfa;
+    font-size:11px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;
+    padding:5px 13px;border-radius:20px;margin-bottom:20px;">
+    📊 Consultoria de Dados para Delivery
+  </div>
+
+  <h1 style="font-family:'Syne',Inter;font-size:clamp(28px,3.8vw,50px);
+    font-weight:800;line-height:1.15;color:#f0f0ff;margin-bottom:18px;">
+    Descubra onde seu delivery<br>
+    está <span style="background:linear-gradient(135deg,#a78bfa,#34d399);
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+      background-clip:text;">perdendo dinheiro</span> — em segundos.
+  </h1>
+
+  <p style="font-size:17px;font-weight:300;color:#8080a0;line-height:1.7;
+    max-width:560px;margin-bottom:0;">
+    Suba o relatório do iFood e receba um diagnóstico financeiro
+    com os problemas rankeados por impacto — e o que fazer em cada um.
+  </p>
 </div>
 """, unsafe_allow_html=True)
 
-
-# ─────────────────────────────────────────────
-#  UPLOAD DE ARQUIVO
-# ─────────────────────────────────────────────
-
+# ─────────────────────────────────────────────────────────────────────────────
+#  UPLOAD
+# ─────────────────────────────────────────────────────────────────────────────
 st.markdown("""
-<div class="upload-title" style="font-family:'Syne',sans-serif;font-size:20px;font-weight:700;color:#e8e8f0;margin-bottom:4px;">
-    📂 Diagnóstico Instantâneo
+<div style="font-family:'Syne',Inter;font-size:17px;font-weight:700;
+  color:#e2e2f0;margin-bottom:4px;">
+  📂 Suba seu relatório
 </div>
-<div class="upload-subtitle" style="color:#60607a;font-size:14px;margin-bottom:12px;">
-    Suba o CSV do seu Portal do Parceiro iFood e veja a análise em segundos.
+<div style="font-size:13px;color:#50507a;margin-bottom:12px;">
+  Exporte pelo Portal do Parceiro iFood → Relatórios → Pedidos → CSV
 </div>
 """, unsafe_allow_html=True)
 
-uploaded_file = st.file_uploader(
-    label="Arraste ou clique para selecionar o relatório (.csv)",
-    type=["csv"],
-    help="Exporte pelo Portal do Parceiro iFood > Relatórios > Pedidos",
-    label_visibility="visible",
-)
+col_up, col_btn = st.columns([3, 1])
 
-if uploaded_file:
+with col_up:
+    arquivo = st.file_uploader(
+        label="Arraste o CSV aqui ou clique para selecionar",
+        type=["csv"],
+        label_visibility="collapsed",
+    )
+
+with col_btn:
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+    if st.button("🎲 Testar com dados simulados", use_container_width=True):
+        st.session_state["df_main"] = process_ifood_data(generate_mock_ifood_data(800))
+        st.session_state["is_mock"] = True
+        st.rerun()
+
+# Processar upload real
+if arquivo:
     try:
-        df_upload = pd.read_csv(uploaded_file, sep=None, engine="python")
-        df_processed = process_ifood_data(df_upload)
-        st.session_state["df_main"] = df_processed
+        df_up = pd.read_csv(arquivo, sep=None, engine="python")
+        df_up = process_ifood_data(df_up)
+        st.session_state["df_main"] = df_up
         st.session_state["is_mock"] = False
-        df = df_processed
-        kpis = get_kpis(df)
-        st.success(f"✅ Arquivo carregado! **{len(df):,} pedidos** encontrados. Navegue pelos módulos no menu lateral.")
+        df     = df_up
+        kpis   = get_kpis(df)
+        choque = calcular_choque(df)
+        st.success(f"✅ {len(df):,} pedidos carregados. Diagnóstico atualizado abaixo.")
     except Exception as e:
-        st.error(f"Erro ao processar o arquivo: {e}. Verifique se é um CSV válido do iFood.")
+        st.error(f"Erro ao processar arquivo: {e}")
 else:
     if st.session_state.get("is_mock"):
-        st.info("👆 Nenhum arquivo enviado ainda. Exibindo **dados de demonstração** com 800 pedidos simulados.")
+        st.caption("👆 Exibindo **dados de demonstração** — 800 pedidos simulados no formato iFood.")
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  CHOQUE DE REALIDADE
+# ─────────────────────────────────────────────────────────────────────────────
+st.markdown("""
+<div style="font-family:'Syne',Inter;font-size:17px;font-weight:700;
+  color:#e2e2f0;margin:32px 0 6px;">
+  ⚡ Diagnóstico Rápido
+</div>
+<div style="font-size:13px;color:#50507a;margin-bottom:16px;">
+  Baseado nos seus dados — estimativas calculadas com metodologia financeira.
+</div>
+""", unsafe_allow_html=True)
 
-# ─────────────────────────────────────────────
-#  KPIs PRINCIPAIS
-# ─────────────────────────────────────────────
+perda_low_fmt  = f"R$ {choque['perda_low']:,.0f}".replace(",", ".")
+perda_high_fmt = f"R$ {choque['perda_high']:,.0f}".replace(",", ".")
+n_itens = choque["n_itens_problema"]
+pct_churn = choque["pct_churn"]
 
-st.markdown('<div class="section-header">📈 Visão Geral do Período</div>', unsafe_allow_html=True)
+st.markdown(f"""
+<div class="choque-grid">
+  <div class="choque-item">
+    <div class="choque-icon">💸</div>
+    <div class="choque-value">{perda_low_fmt} – {perda_high_fmt}</div>
+    <div class="choque-label">por mês em potencial não realizado<br>
+      <span style="color:#404058;font-size:11px;">margem perdida + clientes inativos + cancelamentos</span>
+    </div>
+  </div>
+  <div class="choque-item">
+    <div class="choque-icon">⚠️</div>
+    <div class="choque-value">{n_itens} {'item' if n_itens == 1 else 'itens'}</div>
+    <div class="choque-label">com alta venda e baixa margem<br>
+      <span style="color:#404058;font-size:11px;">você trabalha mais para ganhar menos</span>
+    </div>
+  </div>
+  <div class="choque-item">
+    <div class="choque-icon">📉</div>
+    <div class="choque-value">{pct_churn:.0f}%</div>
+    <div class="choque-label">dos clientes não voltaram a pedir<br>
+      <span style="color:#404058;font-size:11px;">{choque['n_inativos']} clientes inativos há mais de 30 dias</span>
+    </div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+st.markdown("""
+<div style="font-size:11px;color:#30303e;margin-top:-4px;margin-bottom:8px;font-style:italic;">
+  * Estimativas baseadas nos seus dados com metodologia de proxy financeiro. Valores reais podem variar.
+</div>
+""", unsafe_allow_html=True)
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  OVERVIEW KPIs
+# ─────────────────────────────────────────────────────────────────────────────
+st.markdown('<div class="section-header">📊 Visão Geral do Período</div>', unsafe_allow_html=True)
 
 c1, c2, c3, c4 = st.columns(4)
+c1.metric("Faturamento Bruto",
+    f"R$ {kpis['faturamento']:,.0f}".replace(",","."))
+c2.metric("Receita Líquida (após taxas iFood)",
+    f"R$ {kpis['receita_liquida']:,.0f}".replace(",","."))
+c3.metric("Ticket Médio",
+    f"R$ {kpis['ticket_medio']:.2f}".replace(".",","))
+c4.metric("Taxa de Cancelamento",
+    f"{kpis['taxa_cancelamento']:.1f}%",
+    delta=f"Perda de R$ {kpis['perda_cancelamentos']:,.0f}".replace(",","."),
+    delta_color="inverse")
 
-with c1:
-    st.metric(
-        "Faturamento Bruto",
-        f"R$ {kpis['faturamento']:,.0f}".replace(",", "."),
-        delta="+12% vs mês anterior",
-    )
-with c2:
-    st.metric(
-        "Receita Líquida (após taxas)",
-        f"R$ {kpis['receita_liquida']:,.0f}".replace(",", "."),
-        delta="+8% vs mês anterior",
-    )
-with c3:
-    st.metric(
-        "Ticket Médio",
-        f"R$ {kpis['ticket_medio']:.2f}".replace(".", ","),
-        delta="+R$ 3,40",
-    )
-with c4:
-    st.metric(
-        "Taxa de Cancelamento",
-        f"{kpis['taxa_cancelamento']:.1f}%",
-        delta="-2.1%",
-        delta_color="inverse",
-    )
-
-st.markdown("<br>", unsafe_allow_html=True)
-c5, c6, c7, c8 = st.columns(4)
-with c5:
-    st.metric("Total de Pedidos", f"{kpis['total_pedidos']:,}".replace(",", "."))
-with c6:
-    st.metric(
-        "Comissão paga ao iFood",
-        f"R$ {kpis['comissao_total']:,.0f}".replace(",", "."),
-        delta="Custo da plataforma",
-        delta_color="off",
-    )
-with c7:
-    st.metric(
-        "Perda em Cancelamentos",
-        f"R$ {kpis['perda_cancelamentos']:,.0f}".replace(",", "."),
-        delta="Recuperável",
-        delta_color="off",
-    )
-with c8:
-    margem = (kpis['receita_liquida'] / kpis['faturamento'] * 100) if kpis['faturamento'] else 0
-    st.metric("Margem Líquida", f"{margem:.1f}%")
-
-
-# ─────────────────────────────────────────────
-#  MINI GRÁFICO — Faturamento por semana
-# ─────────────────────────────────────────────
-
+# ─────────────────────────────────────────────────────────────────────────────
+#  GRÁFICO — Faturamento semanal
+# ─────────────────────────────────────────────────────────────────────────────
 st.markdown('<div class="section-header">📅 Faturamento nas Últimas Semanas</div>', unsafe_allow_html=True)
 
-df_concluidos = df[~df["is_cancelado"]].copy()
-df_concluidos["Semana"] = df_concluidos["Data do Pedido"].dt.to_period("W").dt.start_time
-fat_semanal = df_concluidos.groupby("Semana")["Valor Bruto"].sum().reset_index()
-fat_semanal = fat_semanal.tail(12)
+df_ok = df[~df["is_cancelado"]].copy()
+df_ok["Semana"] = df_ok["Data do Pedido"].dt.to_period("W").dt.start_time
+fat_semanal = df_ok.groupby("Semana")["Valor Bruto"].sum().reset_index().tail(12)
 
-fig_fat = go.Figure()
-fig_fat.add_trace(go.Scatter(
+fig = go.Figure()
+fig.add_trace(go.Scatter(
     x=fat_semanal["Semana"],
     y=fat_semanal["Valor Bruto"],
     fill="tozeroy",
@@ -571,8 +212,8 @@ fig_fat.add_trace(go.Scatter(
     marker=dict(color="#a78bfa", size=6),
     hovertemplate="Semana: %{x|%d/%m}<br>Faturamento: R$ %{y:,.2f}<extra></extra>",
 ))
-fig_fat.update_layout(
-    height=240,
+fig.update_layout(
+    height=230,
     margin=dict(l=0, r=0, t=8, b=0),
     paper_bgcolor="rgba(0,0,0,0)",
     plot_bgcolor="rgba(0,0,0,0)",
@@ -582,110 +223,122 @@ fig_fat.update_layout(
     font=dict(family="DM Sans", color="#9090a8"),
     hovermode="x unified",
 )
-st.plotly_chart(fig_fat, use_container_width=True)
+st.plotly_chart(fig, use_container_width=True)
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  OS 3 PILARES (navegação para demos)
+# ─────────────────────────────────────────────────────────────────────────────
+st.markdown('<div class="section-header">🔍 Explore os Módulos</div>', unsafe_allow_html=True)
 
-# ─────────────────────────────────────────────
-#  SEÇÃO: PROBLEMA QUE RESOLVEMOS
-# ─────────────────────────────────────────────
-
-st.markdown('<div class="section-header">🔍 O Problema que Resolvemos</div>', unsafe_allow_html=True)
-
-st.markdown("""
-<div class="problem-section">
-    <p class="problem-title">Todo dono de delivery vive esse caos:</p>
-    <p class="problem-subtitle">Dados existem. Decisão não acontece. Dinheiro some.</p>
-    <div class="pain-item">
-        <span class="pain-icon">😤</span>
-        <span class="pain-text"><strong>Relatórios do iFood viram planilha e ficam lá.</strong> Você exporta, abre, fecha. Não sabe o que fazer com os números.</span>
-    </div>
-    <div class="pain-item">
-        <span class="pain-icon">🍕</span>
-        <span class="pain-text"><strong>Tem prato no cardápio que vende bem, mas te deixa no prejuízo.</strong> Você trabalha mais para ganhar menos e não sabe qual é.</span>
-    </div>
-    <div class="pain-item">
-        <span class="pain-icon">🚚</span>
-        <span class="pain-text"><strong>Clientes somem e você não sabe por quê.</strong> A taxa de cancelamento cresce, mas você só descobre quando já perdeu o mês.</span>
-    </div>
-    <div class="pain-item">
-        <span class="pain-icon">💸</span>
-        <span class="pain-text"><strong>A comissão do iFood come sua margem.</strong> Mas sem um número claro, fica difícil saber quanto sobra de verdade para o seu bolso.</span>
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
-
-# ─────────────────────────────────────────────
-#  3 PILARES
-# ─────────────────────────────────────────────
-
-st.markdown('<div class="section-header">🏛️ Os 3 Pilares do Crescimento</div>', unsafe_allow_html=True)
+modo = acesso["modo"]
 
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    st.markdown("""
-    <div class="pillar-card">
-        <span class="pillar-icon">🚚</span>
-        <div class="pillar-title">Operação Eficiente</div>
-        <p class="pillar-desc">
-            Identifique os bairros com mais cancelamentos e os horários de pico que afundam seu tempo médio de entrega.
-            Veja onde sua operação perde dinheiro no mapa.
-        </p>
-        <div class="pillar-benefit">→ Redução de até 18% nos cancelamentos</div>
+    st.markdown(f"""
+    <div style="background:#0f0f1e;border:1px solid #1c1c2e;border-radius:12px;padding:22px 20px;height:100%;">
+      <div class="{'tag-demo' if modo=='demo' else 'tag-premium'}">
+        {'Demo' if modo=='demo' else 'Premium'}
+      </div>
+      <div style="font-size:28px;margin-bottom:8px;">🚚</div>
+      <div style="font-family:'Syne',Inter;font-size:16px;font-weight:700;
+        color:#e2e2f0;margin-bottom:8px;">Operação</div>
+      <p style="font-size:13px;color:#60607a;line-height:1.6;margin-bottom:14px;">
+        Veja onde sua operação perde tempo e aumenta cancelamentos.
+        {'Diagnóstico parcial disponível.' if modo=='demo' else 'Diagnóstico completo por bairro e horário.'}
+      </p>
     </div>
     """, unsafe_allow_html=True)
-    st.page_link("pages/1_Operacao.py", label="Ver Análise de Operação →")
+    st.page_link("pages/1_Operacao.py", label="→ Ver Operação")
 
 with col2:
-    st.markdown("""
-    <div class="pillar-card">
-        <span class="pillar-icon">💰</span>
-        <div class="pillar-title">Lucro no Cardápio</div>
-        <p class="pillar-desc">
-            Descubra quais pratos são heróis e quais são vilões da sua margem.
-            Matriz visual que mostra onde ajustar preço ou cortar item.
-        </p>
-        <div class="pillar-benefit">→ Aumento médio de 23% na margem líquida</div>
+    st.markdown(f"""
+    <div style="background:#0f0f1e;border:1px solid #1c1c2e;border-radius:12px;padding:22px 20px;height:100%;">
+      <div class="{'tag-demo' if modo=='demo' else 'tag-premium'}">
+        {'Demo' if modo=='demo' else 'Premium'}
+      </div>
+      <div style="font-size:28px;margin-bottom:8px;">💰</div>
+      <div style="font-family:'Syne',Inter;font-size:16px;font-weight:700;
+        color:#e2e2f0;margin-bottom:8px;">Lucratividade</div>
+      <p style="font-size:13px;color:#60607a;line-height:1.6;margin-bottom:14px;">
+        Descubra quais pratos constroem — ou destroem — sua margem.
+        {'Visão geral com teaser de problemas.' if modo=='demo' else 'Matriz completa + plano de ação por item.'}
+      </p>
     </div>
     """, unsafe_allow_html=True)
-    st.page_link("pages/2_Lucratividade.py", label="Ver Engenharia de Cardápio →")
+    st.page_link("pages/2_Lucratividade.py", label="→ Ver Lucratividade")
 
 with col3:
-    st.markdown("""
-    <div class="pillar-card">
-        <span class="pillar-icon">❤️</span>
-        <div class="pillar-title">Clientes Fiéis</div>
-        <p class="pillar-desc">
-            Saiba quais clientes estão sumindo antes que seja tarde.
-            Lista pronta para ação de recuperação com cupom ou contato direto.
-        </p>
-        <div class="pillar-benefit">→ +31% de retenção com ações simples</div>
+    st.markdown(f"""
+    <div style="background:#0f0f1e;border:1px solid #1c1c2e;border-radius:12px;padding:22px 20px;height:100%;">
+      <div class="{'tag-demo' if modo=='demo' else 'tag-premium'}">
+        {'Demo' if modo=='demo' else 'Premium'}
+      </div>
+      <div style="font-size:28px;margin-bottom:8px;">❤️</div>
+      <div style="font-family:'Syne',Inter;font-size:16px;font-weight:700;
+        color:#e2e2f0;margin-bottom:8px;">Fidelização</div>
+      <p style="font-size:13px;color:#60607a;line-height:1.6;margin-bottom:14px;">
+        Entenda por que seus clientes somem e como trazê-los de volta.
+        {'Taxa de retorno e tempo médio.' if modo=='demo' else 'Cohort completo + lista de clientes para recuperar.'}
+      </p>
     </div>
     """, unsafe_allow_html=True)
-    st.page_link("pages/3_Fidelizacao.py", label="Ver Análise de Clientes →")
+    st.page_link("pages/3_Fidelizacao.py", label="→ Ver Fidelização")
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  CTA — bloquear ou mostrar status premium
+# ─────────────────────────────────────────────────────────────────────────────
+st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
-# ─────────────────────────────────────────────
-#  CTA WHATSAPP
-# ─────────────────────────────────────────────
+if modo == "demo":
+    st.markdown("""
+    <div style="
+        background:linear-gradient(135deg,#110a1e,#0a110e);
+        border:1px solid #221840;border-radius:16px;
+        padding:38px 36px;text-align:center;margin-top:16px;">
+      <div style="font-size:36px;margin-bottom:12px;">🔒</div>
+      <div style="font-family:'Syne',Inter;font-size:24px;font-weight:800;
+        color:#f0f0ff;margin-bottom:8px;">
+        Quer ver o diagnóstico completo?
+      </div>
+      <p style="font-size:15px;color:#60607a;margin-bottom:6px;">
+        Margem real por item · Plano de ação priorizado · Lista de clientes para recuperar
+      </p>
+      <p style="font-size:13px;color:#40404e;margin-bottom:28px;">
+        Tudo em uma sessão de 30 minutos. Sem enrolação.
+      </p>
+      <a href="https://wa.me/5511999999999?text=Ol%C3%A1!%20Quero%20ver%20o%20diagn%C3%B3stico%20completo%20do%20meu%20delivery."
+         style="display:inline-block;background:#25d366;color:#000;
+           font-family:'Syne',Inter;font-size:15px;font-weight:700;
+           padding:14px 32px;border-radius:8px;text-decoration:none;"
+         target="_blank">
+        💬 Falar no WhatsApp — É Gratuito
+      </a>
+    </div>
+    """, unsafe_allow_html=True)
+else:
+    nome = acesso["cliente"]
+    st.markdown(f"""
+    <div style="
+        background:rgba(52,211,153,0.05);
+        border:1px solid rgba(52,211,153,0.15);border-radius:12px;
+        padding:22px 26px;margin-top:16px;display:flex;
+        align-items:center;gap:16px;">
+      <div style="font-size:32px;">✅</div>
+      <div>
+        <div style="font-family:'Syne',Inter;font-size:16px;font-weight:700;color:#e2e2f0;">
+          Acesso Premium ativo — {nome}
+        </div>
+        <div style="font-size:13px;color:#50507a;margin-top:4px;">
+          Todos os módulos desbloqueados. Use o menu lateral para navegar.
+        </div>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
 
+# rodapé
 st.markdown("""
-<div class="cta-section">
-    <div class="cta-title">Pronto para parar de perder dinheiro?</div>
-    <p class="cta-subtitle">
-        Agende uma sessão de diagnóstico gratuita de 30 minutos.<br>
-        Analisamos seu relatório juntos e saímos com um plano de ação.
-    </p>
-    <a href="https://wa.me/5511999999999?text=Olá!%20Quero%20um%20diagnóstico%20gratuito%20do%20meu%20delivery." 
-       class="wpp-button" target="_blank">
-        💬  Falar no WhatsApp — É Grátis
-    </a>
-</div>
-""", unsafe_allow_html=True)
-
-st.markdown("""
-<div style="text-align:center; padding: 24px 0 8px; color:#35354a; font-size:12px;">
-    DeliveryPro Hub © 2025 — Consultoria de Dados para Restaurantes
+<div style="text-align:center;padding:32px 0 8px;color:#252535;font-size:12px;">
+  DeliveryPro Hub · Consultoria de Dados para Restaurantes
 </div>
 """, unsafe_allow_html=True)

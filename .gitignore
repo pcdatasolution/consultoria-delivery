@@ -1,0 +1,36 @@
+# Ambiente virtual
+venv/
+.env/
+
+# Dados
+data/
+*.csv
+*.xlsx
+*.parquet
+
+# Outputs gerados
+output/
+test_output/
+
+# Logs
+*.log
+
+# Cache Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE
+.vscode/
+.idea/
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+clients/*/.env
+clients/*/data/
+clients/*/output/
