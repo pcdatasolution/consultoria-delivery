@@ -460,7 +460,20 @@ def generate_mock_ifood_data(n_pedidos: int = 800) -> pd.DataFrame:
     random.seed(42)
 
     hoje   = datetime.today()
-    datas  = sorted([hoje - timedelta(days=random.randint(0, 180)) for _ in range(n_pedidos)])
+    # Horas com distribuição realista: pico almoço (11-14h) e jantar (18-22h)
+    horas_possiveis = (
+        list(range(11, 15)) * 3 +   # almoço — peso 3
+        list(range(18, 23)) * 5 +   # jantar — peso 5
+        list(range(15, 18)) * 1     # tarde — peso 1
+    )
+    datas = sorted([
+        hoje - timedelta(
+            days=random.randint(0, 180),
+            hours=-random.choice(horas_possiveis),
+            minutes=-random.randint(0, 59)
+        )
+        for _ in range(n_pedidos)
+    ])
     itens  = random.choices(list(POPULARIDADE.keys()), weights=list(POPULARIDADE.values()), k=n_pedidos)
     bairros = random.choices(BAIRROS, k=n_pedidos)
     status  = np.random.choice(["Concluído", "Cancelado"], size=n_pedidos, p=[0.88, 0.12])

@@ -175,50 +175,63 @@ fig.update_layout(
 st.plotly_chart(fig, use_container_width=True)
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  HEATMAP — Dia da semana × Hora
+#  BUBBLE — Pedidos por hora × dia da semana
 # ─────────────────────────────────────────────────────────────────────────────
-st.markdown('<div class="section-header">🕐 Quando seu restaurante bombeia</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-header">🕐 Horarios de pico durante a semana</div>', unsafe_allow_html=True)
 
-dias_ordem  = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"]
-dias_map    = {0:"Segunda",1:"Terça",2:"Quarta",3:"Quinta",4:"Sexta",5:"Sábado",6:"Domingo"}
+dias_ordem = ["Domingo", "Sábado", "Sexta", "Quinta", "Quarta", "Terça", "Segunda"]
+dias_map   = {0:"Segunda",1:"Terça",2:"Quarta",3:"Quinta",4:"Sexta",5:"Sábado",6:"Domingo"}
 
 df_heat = df_ok.copy()
 df_heat["DiaSemana"] = df_heat["Data do Pedido"].dt.dayofweek.map(dias_map)
-df_heat["Hora"] = pd.to_datetime(df_heat["Hora"], format="mixed", errors="coerce").dt.hour
+
+if df_heat["Hora"].dtype == object:
+    df_heat["Hora"] = pd.to_datetime(df_heat["Hora"], format="mixed", errors="coerce").dt.hour
 df_heat = df_heat.dropna(subset=["Hora"])
 df_heat["Hora"] = df_heat["Hora"].astype(int)
 
-hora_min = int(df_heat["Hora"].min())
-hora_max = int(df_heat["Hora"].max())
-horas    = list(range(hora_min, hora_max + 1))
-
-pivot = (
+bubble = (
     df_heat.groupby(["DiaSemana", "Hora"])
     .size()
     .reset_index(name="Pedidos")
-    .pivot(index="DiaSemana", columns="Hora", values="Pedidos")
-    .reindex(dias_ordem)
-    .reindex(columns=horas)
-    .fillna(0)
 )
 
-fig_heat = go.Figure(go.Heatmap(
-    z=pivot.values,
-    x=[f"{h}h" for h in horas],
-    y=dias_ordem,
-    colorscale="Purples",
-    hovertemplate="Dia: %{y}<br>Hora: %{x}<br>Pedidos: %{z:.0f}<extra></extra>",
+fig_bubble = go.Figure(go.Scatter(
+    x=bubble["Hora"],
+    y=bubble["DiaSemana"],
+    mode="markers",
+    marker=dict(
+        size=bubble["Pedidos"],
+        sizemode="area",
+        sizeref=2. * bubble["Pedidos"].max() / (40**2),
+        sizemin=4,
+        color=bubble["Pedidos"],
+        colorscale="Purples",
+        showscale=False,
+    ),
+    hovertemplate="%{y} — %{x}h<br>Pedidos: %{marker.size:.0f}<extra></extra>",
+    text=bubble["Pedidos"],
 ))
-fig_heat.update_layout(
-    height=260,
+
+fig_bubble.update_layout(
+    height=280,
     margin=dict(l=0, r=0, t=8, b=0),
     paper_bgcolor="rgba(0,0,0,0)",
     plot_bgcolor="rgba(0,0,0,0)",
     font=dict(family="DM Sans", color="#9090a8"),
-    xaxis=dict(showgrid=False),
-    yaxis=dict(showgrid=False),
+    xaxis=dict(
+        showgrid=False, color="#50507a",
+        tickmode="array",
+        tickvals=list(bubble["Hora"].unique()),
+        ticktext=[f"{h}h" for h in sorted(bubble["Hora"].unique())],
+    ),
+    yaxis=dict(
+        showgrid=False, color="#50507a",
+        categoryorder="array", categoryarray=dias_ordem,
+    ),
+    hovermode="closest",
 )
-st.plotly_chart(fig_heat, use_container_width=True)
+st.plotly_chart(fig_bubble, use_container_width=True)
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  TOP 5 ITENS + TOP 3 BAIRROS
