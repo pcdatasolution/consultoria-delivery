@@ -16,32 +16,33 @@ import streamlit as st
 SENHA_MASTER = "master2025"
 
 CLIENTES_PREMIUM = {
-    "burger123":  "Burguer do João",
-    "pizza456":   "Pizzaria Bella Napoli",
-    "frango789":  "Frango Assado do Zé",
-    "demo_full":  "Demo Interna",
+    "burger123": {"nome": "Burguer do João",        "sheets_id": "1fonnx8d9zbdTtGLIy__jv9P2atycuIFT82bjaOm0jfc"},
+    "pizza456":  {"nome": "Pizzaria Bella Napoli",  "sheets_id": ""},
+    "frango789": {"nome": "Frango Assado do Zé",    "sheets_id": ""},
+    "demo_full": {"nome": "Demo Interna",           "sheets_id": ""},
 }
 
 def detectar_modo() -> dict:
     params = st.query_params
     acesso = params.get("acesso", "")
 
-    # Se veio via query param, persiste no session_state
     if acesso == SENHA_MASTER:
         st.session_state["senha_digitada"] = acesso
-        return {"modo": "premium", "cliente": "Master", "is_master": True}
+        return {"modo": "premium", "cliente": "Master", "sheets_id": None, "is_master": True}
     if acesso in CLIENTES_PREMIUM:
         st.session_state["senha_digitada"] = acesso
-        return {"modo": "premium", "cliente": CLIENTES_PREMIUM[acesso], "is_master": False}
+        info = CLIENTES_PREMIUM[acesso]
+        return {"modo": "premium", "cliente": info["nome"], "sheets_id": info["sheets_id"], "is_master": False}
 
-    # Nas páginas seguintes, lê do session_state
     senha_s = st.session_state.get("senha_digitada", "")
     if senha_s == SENHA_MASTER:
-        return {"modo": "premium", "cliente": "Master", "is_master": True}
+        return {"modo": "premium", "cliente": "Master", "sheets_id": None, "is_master": True}
     if senha_s in CLIENTES_PREMIUM:
-        return {"modo": "premium", "cliente": CLIENTES_PREMIUM[senha_s], "is_master": False}
+        info = CLIENTES_PREMIUM[senha_s]
+        return {"modo": "premium", "cliente": info["nome"], "sheets_id": info["sheets_id"], "is_master": False}
 
-    return {"modo": "demo", "cliente": None, "is_master": False}
+    # Sem senha — acesso livre, mock data, tudo visível
+    return {"modo": "premium", "cliente": None, "sheets_id": None, "is_master": False}
 
 
 # ─────────────────────────────────────────────
@@ -231,124 +232,143 @@ def render_sidebar(active: str = "home"):
     acesso = detectar_modo()
 
     with st.sidebar:
+
         # ── TOPO: Logo ───────────────────────────────────────────────
         st.markdown("""
-        <div style="padding:18px 4px 14px;">
-            <div style="font-family:'Inter',sans-serif;font-size:20px;font-weight:800;color:#2f5f98;line-height:1.1;">
+        <div style="padding:20px 4px 16px;">
+            <div style="font-family:'Inter',sans-serif;font-size:21px;
+              font-weight:800;color:#2f5f98;line-height:1.1;">
                 🍕 DeliveryPro
             </div>
-            <div style="font-size:11px;color:#7a90b0;letter-spacing:1.4px;text-transform:uppercase;margin-top:3px;font-weight:500;">
+            <div style="font-size:11px;color:#7a90b0;letter-spacing:1.4px;
+              text-transform:uppercase;margin-top:4px;font-weight:500;">
                 Hub de Soluções
             </div>
         </div>""", unsafe_allow_html=True)
 
+        st.markdown("""
+        <div style="height:1px;background:#e5e9f0;margin-bottom:16px;"></div>
+        """, unsafe_allow_html=True)
+
         # ── UPLOAD ───────────────────────────────────────────────────
         st.markdown("""
-        <div style="font-size:12px;font-weight:600;color:#7a90b0;
-          text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">
-          📂 Enviar Dados
+        <div style="font-size:11px;font-weight:600;color:#7a90b0;
+          text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">
+          📂 Dados do Cliente
         </div>""", unsafe_allow_html=True)
 
-        arquivo = st.file_uploader(
-            label="x",
-            type=["csv"],
-            label_visibility="collapsed",
-            key="sidebar_upload",
-        )
+        # Se já tem dados enviados, mostra badge e botão para limpar
+        if not st.session_state.get("is_mock", True):
+            st.markdown("""
+            <div style="background:#f0faf4;border:1px solid #a7d7b8;
+              border-radius:8px;padding:10px 12px;margin-bottom:8px;">
+              <div style="font-size:12px;color:#16a34a;font-weight:600;">
+                ✅ Utilizando dados enviados
+              </div>
+              <div style="font-size:11px;color:#5a7a6a;margin-top:2px;">
+                Dados do cliente carregados com sucesso.
+              </div>
+            </div>""", unsafe_allow_html=True)
 
-        if arquivo:
-            try:
-                df_up = pd.read_csv(arquivo, sep=None, engine="python")
-                df_up = process_ifood_data(df_up)
-                st.session_state["df_main"] = df_up
-                st.session_state["is_mock"] = False
-                st.markdown("""
-                <div style="background:rgba(52,211,153,0.08);border:1px solid rgba(52,211,153,0.2);
-                  border-radius:8px;padding:8px 12px;margin-top:6px;">
-                  <div style="font-size:12px;color:#34d399;font-weight:600;">
-                    ✅ Utilizando dados enviados
-                  </div>
-                </div>""", unsafe_allow_html=True)
-            except Exception as e:
-                st.error(f"Erro: {e}")
+            if st.button("🔄 Usar dados de demonstração",
+                         use_container_width=True, key="btn_limpar_dados"):
+                st.session_state["df_main"] = process_ifood_data(
+                    generate_mock_ifood_data(800)
+                )
+                st.session_state["is_mock"] = True
+                st.session_state.pop("upload_pendente", None)
+                st.rerun()
+
         else:
-            if st.session_state.get("is_mock", True):
-                st.caption("Usando dados de demonstração.")
+            st.markdown("""
+            <div style="font-size:12px;color:#9aabb8;
+              font-style:italic;padding:4px 0 8px;">
+              Usando dados de demonstração.
+            </div>""", unsafe_allow_html=True)
 
-        st.markdown("---")
+        st.markdown("""
+        <div style="height:1px;background:#e5e9f0;margin:14px 0 12px;"></div>
+        """, unsafe_allow_html=True)
 
         # ── NAVEGAÇÃO ────────────────────────────────────────────────
         st.markdown("""
         <div style="font-size:11px;font-weight:600;color:#7a90b0;
-          text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">
+          text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">
           Etapas
         </div>""", unsafe_allow_html=True)
 
-        st.page_link("app.py",                          label="🏠  Visão Geral")
-        st.page_link("pages/1_Operacao.py",             label="🚚  Operação")
-        st.page_link("pages/2_Lucratividade.py",        label="💰  Lucratividade")
-        st.page_link("pages/3_Fidelizacao.py",          label="❤️  Fidelização")
-        st.page_link("pages/5_Aquisicao.py",            label="📈  Aquisição & Mercado")
+        st.page_link("app.py",                   label="🏠  Visão Geral")
+        st.page_link("pages/1_Operacao.py",      label="🚚  Operação")
+        st.page_link("pages/2_Lucratividade.py", label="💰  Lucratividade")
+        st.page_link("pages/3_Fidelizacao.py",   label="❤️  Fidelização")
 
-        if acesso["modo"] == "premium":
-            st.page_link("pages/4_Plano.py",            label="🧠  Plano de Crescimento")
-        else:
-            st.markdown("""
-            <div style="padding:6px 12px;margin:2px 0;border-radius:6px;
-              background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);">
-                <span style="font-size:13px;color:#50504a;">🔒  Plano de Crescimento</span>
-            </div>""", unsafe_allow_html=True)
+        st.page_link("pages/4_Plano.py",     label="🧠  Plano de Crescimento")
 
-        st.markdown("---")
+        st.markdown("""
+        <div style="height:1px;background:#e5e9f0;margin:14px 0 12px;"></div>
+        """, unsafe_allow_html=True)
 
         # ── ACESSO ───────────────────────────────────────────────────
         if acesso["modo"] == "premium":
-            nome = acesso["cliente"]
-            st.markdown(f"""
-            <div style="background:rgba(52,211,153,0.08);border:1px solid rgba(52,211,153,0.2);
-              border-radius:8px;padding:10px 12px;">
-                <div style="font-size:11px;color:#34d399;font-weight:600;
-                  text-transform:uppercase;letter-spacing:1px;">✅ Acesso Premium</div>
-                <div style="font-size:13px;color:#9090a8;margin-top:2px;">{nome}</div>
-            </div>""", unsafe_allow_html=True)
-            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-            if st.button("Sair", use_container_width=True, key="btn_sair"):
-                st.session_state["senha_digitada"] = ""
-                st.query_params.clear()
-                st.rerun()
-        else:
-            st.markdown("""
-            <div style="background:rgba(17,17,32,0.06);border:1px solid #e0e6f0;
-              border-radius:8px;padding:10px 12px;">
-                <div style="font-size:11px;color:#f59e0b;font-weight:600;
-                  text-transform:uppercase;letter-spacing:1px;">🔓 Modo Demo</div>
-                <div style="font-size:12px;color:#7a90b0;margin-top:4px;line-height:1.5;">
-                  Diagnóstico completo bloqueado</div>
-            </div>""", unsafe_allow_html=True)
+            if acesso.get("cliente"):
+                # Cliente identificado — mostra badge e botão de sair
+                nome = acesso["cliente"]
+                st.markdown(f"""
+                <div style="background:#f0faf4;border:1px solid #a7d7b8;
+                  border-radius:8px;padding:10px 12px;">
+                  <div style="font-size:11px;color:#16a34a;font-weight:600;
+                    text-transform:uppercase;letter-spacing:1px;">
+                    ✅ Acesso Premium
+                  </div>
+                  <div style="font-size:13px;color:#3a5a4a;
+                    margin-top:2px;font-weight:500;">{nome}</div>
+                </div>""", unsafe_allow_html=True)
 
-            st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
-            senha_input = st.text_input(
-                "Código de acesso", type="password",
-                placeholder="Digite seu código", key="senha_input_sidebar"
-            )
-            if st.button("Acessar", use_container_width=True, key="btn_acessar"):
-                if senha_input:
-                    if senha_input == SENHA_MASTER or senha_input in CLIENTES_PREMIUM:
-                        st.session_state["senha_digitada"] = senha_input
-                        st.rerun()
+                st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+                if st.button("Sair", use_container_width=True, key="btn_sair"):
+                    st.session_state["senha_digitada"] = ""
+                    st.session_state.pop("df_main", None)
+                    st.session_state.pop("is_mock", None)
+                    st.query_params.clear()
+                    st.rerun()
+
+            else:
+                # Visitante sem senha — mostra input de login
+                st.markdown("""
+                <div style="font-size:12px;color:#9aabb8;
+                  font-style:italic;padding:4px 0 8px;">
+                  Dados de demonstração ativos.
+                </div>""", unsafe_allow_html=True)
+
+                senha_input = st.text_input(
+                    "Código de acesso", type="password",
+                    placeholder="Digite seu código",
+                    key="senha_input_sidebar",
+                    label_visibility="collapsed",
+                )
+                if st.button("Acessar", use_container_width=True,
+                             key="btn_acessar", type="tertiary"):
+                    if senha_input:
+                        if senha_input == SENHA_MASTER or senha_input in CLIENTES_PREMIUM:
+                            st.session_state["senha_digitada"] = senha_input
+                            st.session_state.pop("df_main", None)
+                            st.session_state.pop("is_mock", None)
+                            st.rerun()
+                        else:
+                            st.error("Acesso negado.")
                     else:
-                        st.error("Acesso negado.")
+                        st.warning("Digite seu código de acesso.")
 
         # ── PAINEL MASTER ────────────────────────────────────────────
         if acesso["is_master"]:
-            st.markdown("---")
             st.markdown("""
-            <div style="font-size:11px;color:#a78bfa;text-transform:uppercase;
-              letter-spacing:1px;margin-bottom:8px;">
-                🔧 Painel Master
+            <div style="height:1px;background:#e5e9f0;margin:14px 0 12px;"></div>
+            <div style="font-size:11px;color:#2f5f98;font-weight:600;
+              text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">
+              🔧 Painel Master
             </div>""", unsafe_allow_html=True)
             ajuste = st.text_area(
-                "Observações personalizadas para este cliente",
+                "Observações para este cliente",
                 key="ajuste_manual_master", height=120,
                 placeholder="Ex: 'No seu caso, o Hamburguer Duplo representa 32% das vendas...'"
             )
@@ -356,7 +376,7 @@ def render_sidebar(active: str = "home"):
                 st.session_state["ajuste_manual"] = ajuste
 
 
-def render_lock_card(titulo: str, itens_bloqueados: list, wpp_numero: str = "5511999999999"):
+def render_lock_card(titulo: str, itens_bloqueados: list, wpp_numero: str = "5512996320085"):
     """Card padrão de bloqueio premium."""
     itens_html = "".join(f"<li>{i}</li>" for i in itens_bloqueados)
     wpp_msg = "Olá! Quero ver o diagnóstico completo do meu delivery."
@@ -823,3 +843,152 @@ def gerar_plano_automatico(df: pd.DataFrame) -> dict:
         "impacto_mensal_high": max(impacto_total * fator * 1.00, 0),
         "n_problemas":         len(problemas),
     }
+
+
+# ─────────────────────────────────────────────
+#  GOOGLE SHEETS — leitura de dados do cliente
+# ─────────────────────────────────────────────
+
+def _limpar_valor_monetario(val) -> float:
+    """Remove R$, pontos e vírgulas e converte para float."""
+    if pd.isna(val) or str(val).strip() == "":
+        return 0.0
+    return float(
+        str(val)
+        .replace("R$", "")
+        .replace(".", "")
+        .replace(",", ".")
+        .strip()
+    )
+
+
+def _limpar_float(val) -> float:
+    """Converte string com vírgula decimal para float."""
+    if pd.isna(val) or str(val).strip() == "":
+        return 0.0
+    return float(str(val).replace(",", ".").strip())
+
+
+def carregar_dados_cliente(sheets_id: str) -> dict:
+    """
+    Lê todas as abas da planilha do cliente no Google Sheets.
+    Retorna dict com: config, cardapio, intervencoes, ganhos, notas.
+    Em caso de erro em qualquer aba, retorna dados parciais sem quebrar.
+    """
+    try:
+        import gspread
+    except ImportError:
+        st.warning("Biblioteca gspread não instalada. Rode: pip install gspread")
+        return {}
+
+    try:
+        gc       = gspread.service_account(filename="credentials.json")
+        planilha = gc.open_by_key(sheets_id)
+    except Exception as e:
+        st.error(f"Erro ao conectar ao Google Sheets: {e}")
+        return {}
+
+    resultado = {}
+
+    # ── 1. Config ────────────────────────────────────────────────────────
+    try:
+        df_cfg = pd.DataFrame(planilha.worksheet("config").get_all_records())
+        config = dict(zip(df_cfg["chave"], df_cfg["valor"]))
+        config["margem_proxy"]        = _limpar_float(config.get("margem_proxy", 0.30))
+        config["dias_inativo"]        = int(config.get("dias_inativo", 30))
+        config["churn"]               = int(config.get("churn", 30))
+        config["investimento_mensal"] = _limpar_float(config.get("investimento_mensal", 0))
+        resultado["config"] = config
+    except Exception as e:
+        resultado["config"] = {}
+        st.warning(f"Aba 'config' com erro: {e}")
+
+    # ── 2. Cardápio ──────────────────────────────────────────────────────
+    try:
+        df_card = pd.DataFrame(planilha.worksheet("cardapio").get_all_records())
+        df_card["custo"] = df_card["custo"].apply(_limpar_valor_monetario)
+        df_card["preco"] = df_card["preco"].apply(_limpar_valor_monetario)
+        df_card = df_card[df_card["ativo"].str.lower().str.strip() == "sim"].copy()
+        df_card["margem"] = (
+            (df_card["preco"] - df_card["custo"]) / df_card["preco"]
+        ).round(4)
+        cardapio_dict = {
+            row["item"].strip(): {
+                "custo":     row["custo"],
+                "preco":     row["preco"],
+                "margem":    row["margem"],
+                "categoria": row.get("categoria", ""),
+            }
+            for _, row in df_card.iterrows()
+            if row["preco"] > 0
+        }
+        resultado["cardapio"]    = cardapio_dict
+        resultado["cardapio_df"] = df_card
+    except Exception as e:
+        resultado["cardapio"]    = {}
+        resultado["cardapio_df"] = pd.DataFrame()
+        st.warning(f"Aba 'cardapio' com erro: {e}")
+
+    # ── 3. Intervenções ──────────────────────────────────────────────────
+    try:
+        df_int = pd.DataFrame(planilha.worksheet("intervencoes").get_all_records())
+        df_int["data"] = pd.to_datetime(df_int["data"], dayfirst=True, errors="coerce")
+        df_int["id"]   = pd.to_numeric(df_int["id"], errors="coerce")
+        resultado["intervencoes"] = df_int
+    except Exception as e:
+        resultado["intervencoes"] = pd.DataFrame()
+        st.warning(f"Aba 'intervencoes' com erro: {e}")
+
+    # ── 4. Ganhos ────────────────────────────────────────────────────────
+    try:
+        df_gan = pd.DataFrame(planilha.worksheet("ganhos").get_all_records())
+        df_gan["valor"]          = df_gan["valor"].apply(_limpar_valor_monetario)
+        df_gan["intervencao_id"] = pd.to_numeric(df_gan["intervencao_id"], errors="coerce")
+        resultado["ganhos"] = df_gan
+    except Exception as e:
+        resultado["ganhos"] = pd.DataFrame()
+        st.warning(f"Aba 'ganhos' com erro: {e}")
+
+    # ── 5. Notas ─────────────────────────────────────────────────────────
+    try:
+        df_not = pd.DataFrame(planilha.worksheet("notas").get_all_records())
+        df_not["data"] = pd.to_datetime(df_not["data"], dayfirst=True, errors="coerce")
+        resultado["notas"] = df_not
+    except Exception as e:
+        resultado["notas"] = pd.DataFrame()
+        st.warning(f"Aba 'notas' com erro: {e}")
+
+    return resultado
+
+def carregar_pedidos_sheets(sheets_id: str) -> pd.DataFrame | None:
+    """
+    Lê a aba 'pedidos' da planilha do cliente e retorna
+    um DataFrame no mesmo formato de process_ifood_data.
+    Retorna None se a aba estiver vazia ou ocorrer erro.
+    """
+    try:
+        import gspread
+    except ImportError:
+        st.warning("Biblioteca gspread não instalada. Rode: pip install gspread")
+        return None
+
+    try:
+        gc       = gspread.service_account(filename="credentials.json")
+        planilha = gc.open_by_key(sheets_id)
+        df       = pd.DataFrame(planilha.worksheet("pedidos").get_all_records())
+    except Exception as e:
+        st.error(f"Erro ao ler aba 'pedidos': {e}")
+        return None
+
+    if df.empty:
+        return None
+
+    # Garantir tipos corretos
+    df["Data do Pedido"]        = pd.to_datetime(df["Data do Pedido"], dayfirst=True, errors="coerce")
+    df["Valor Bruto"]           = df["Valor Bruto"].apply(_limpar_valor_monetario)
+    df["Taxa iFood"]            = df["Taxa iFood"].apply(_limpar_valor_monetario)
+    df["Tempo de Entrega (min)"]= pd.to_numeric(df["Tempo de Entrega (min)"], errors="coerce").fillna(0)
+    df["is_cancelado"]          = df["is_cancelado"].astype(str).str.strip().str.lower().isin(["true", "1", "sim", "s"])
+    df["Dia Semana"]            = df["Data do Pedido"].dt.day_name()
+
+    return df

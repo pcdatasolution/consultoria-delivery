@@ -11,7 +11,7 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from utils import (
     generate_mock_ifood_data, process_ifood_data, get_kpis,
-    detectar_modo, inject_css, render_sidebar, render_lock_card,
+    detectar_modo, inject_css, render_sidebar,
 )
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -25,7 +25,6 @@ st.set_page_config(
 inject_css()
 render_sidebar(active="operacao")
 acesso = detectar_modo()
-modo   = acesso["modo"]
 
 # ── Dados ─────────────────────────────────────────────────────────────────────
 if "df_main" not in st.session_state:
@@ -36,17 +35,13 @@ df_ok = df[~df["is_cancelado"]].copy()
 kpis  = get_kpis(df)
 
 # ── Header ────────────────────────────────────────────────────────────────────
-tag_html = f'<div class="{"tag-demo" if modo == "demo" else "tag-premium"}">{"Demo" if modo == "demo" else "Premium"}</div>'
-
-st.markdown(f"""
-{tag_html}
+st.markdown("""
 <div style="font-family:'Syne',sans-serif;font-size:28px;font-weight:800;
   color:#2f5f98;line-height:1.2;margin-bottom:6px;">
   🚚 Operação & Logística
 </div>
 <div style="color:#2f5f98;font-size:14px;margin-bottom:28px;">
-  {"Visão geral da sua operação. Diagnóstico detalhado disponível no plano completo." if modo == "demo"
-   else "Diagnóstico completo — tempo por bairro, cancelamentos e horários críticos."}
+  Diagnóstico completo — tempo por bairro, cancelamentos e horários críticos.
 </div>
 """, unsafe_allow_html=True)
 
@@ -143,242 +138,177 @@ with col_insight:
     """, unsafe_allow_html=True)
 
     # Insight teaser específico para demo
-    if modo == "demo":
-        # Calcular o dado real mas mostrar só o teaser
-        cancel_hora = df.groupby("Hora")["is_cancelado"].mean()
-        hora_pico   = cancel_hora.idxmax()
-        pct_pico    = cancel_hora.max() * 100
-
-        st.markdown(f"""
-        <div class="insight red">
-          <div class="insight-title">🔥 Horário de risco identificado</div>
-          <div class="insight-text">
-            Pedidos às <strong>{hora_pico}h</strong> têm
-            <strong>{pct_pico:.0f}% de cancelamento</strong> — acima da média geral.
-            <br><br>
-            <span style="color:#404058;font-size:12px;">
-              🔒 Diagnóstico por bairro e plano de ação disponíveis no plano completo.
-            </span>
-          </div>
-        </div>
-        """, unsafe_allow_html=True)
-    else:
-        melhor = dia_stats.loc[dia_stats["pct_label"].idxmin()]
-        st.markdown(f"""
-        <div class="insight green">
-          <div class="insight-title">✅ Melhor dia: {melhor['Label']}</div>
-          <div class="insight-text">
-            Apenas {melhor['pct_label']:.1f}% de cancelamentos.
-            Entenda o que funciona aqui e replique nos dias críticos.
-          </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  SEÇÃO 3 — DEMO: lock card  |  PREMIUM: conteúdo completo
-# ─────────────────────────────────────────────────────────────────────────────
-
-if modo == "demo":
-    # ── Teaser visual borrado + lock card ────────────────────────────────
-    st.markdown('<div class="section-header">📍 Análise por Bairro e Horário</div>', unsafe_allow_html=True)
-
-    # Gráfico de tempo por bairro — gerado mas borrado
-    tempo_bairro = (
-        df_ok.groupby("Bairro")["Tempo de Entrega (min)"]
-        .mean().reset_index()
-        .sort_values("Tempo de Entrega (min)", ascending=True)
-    )
-    fig_blur = go.Figure(go.Bar(
-        y=tempo_bairro["Bairro"],
-        x=tempo_bairro["Tempo de Entrega (min)"],
-        orientation="h",
-        marker=dict(
-            color=tempo_bairro["Tempo de Entrega (min)"],
-            colorscale=[[0,"#34d399"],[0.5,"#f59e0b"],[1,"#f87171"]],
-        ),
-    ))
-    fig_blur.update_layout(
-        height=300,
-        margin=dict(l=0, r=0, t=0, b=0),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        xaxis=dict(showgrid=True, gridcolor="#1a1a28", color="#50507a"),
-        yaxis=dict(showgrid=False, color="#9090a8"),
-        font=dict(family="DM Sans", color="#9090a8"),
-    )
-
-    # Wrapper com blur via HTML + plotly renderizado em baixa opacidade
-    st.markdown('<div style="opacity:0.18;filter:blur(3px);pointer-events:none;">', unsafe_allow_html=True)
-    st.plotly_chart(fig_blur, use_container_width=True)
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    render_lock_card(
-        titulo="Diagnóstico Completo de Operação",
-        itens_bloqueados=[
-            "Tempo médio de entrega por bairro",
-            "Mapa de calor de cancelamentos por região",
-            "Horários críticos com maior taxa de problema",
-            "Plano de ação priorizado por impacto",
-        ],
-    )
-
-else:
-    # ── PREMIUM — Tempo por bairro ────────────────────────────────────────
-    st.markdown('<div class="section-header">📍 Tempo Médio de Entrega por Bairro</div>', unsafe_allow_html=True)
-
-    # Filtro de bairro na própria página
-    bairros_disp = sorted(df_ok["Bairro"].dropna().unique().tolist())
-    bairros_sel  = st.multiselect("Filtrar bairros", bairros_disp, default=bairros_disp, key="op_bairros")
-    df_filt = df_ok[df_ok["Bairro"].isin(bairros_sel)] if bairros_sel else df_ok
-
-    tempo_bairro = (
-        df_filt.groupby("Bairro")["Tempo de Entrega (min)"]
-        .agg(["mean", "count"])
-        .reset_index()
-        .rename(columns={"mean": "Tempo Médio (min)", "count": "Pedidos"})
-        .sort_values("Tempo Médio (min)", ascending=True)
-    )
-
-    fig_tempo = go.Figure(go.Bar(
-        y=tempo_bairro["Bairro"],
-        x=tempo_bairro["Tempo Médio (min)"],
-        orientation="h",
-        marker=dict(
-            color=tempo_bairro["Tempo Médio (min)"],
-            colorscale=[[0,"#34d399"],[0.5,"#f59e0b"],[1,"#f87171"]],
-        ),
-        text=tempo_bairro["Tempo Médio (min)"].apply(lambda x: f"{x:.0f} min"),
-        textposition="outside",
-        customdata=tempo_bairro["Pedidos"],
-        hovertemplate="%{y}<br>Tempo médio: %{x:.0f} min<br>Pedidos: %{customdata}<extra></extra>",
-    ))
-    fig_tempo.update_layout(
-        height=380,
-        margin=dict(l=0, r=60, t=8, b=0),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        xaxis=dict(showgrid=True, gridcolor="#1a1a28", color="#50507a", title="minutos"),
-        yaxis=dict(showgrid=False, color="#9090a8"),
-        font=dict(family="DM Sans", color="#9090a8"),
-    )
-    st.plotly_chart(fig_tempo, use_container_width=True)
-
-    # Insights automáticos
-    bairro_lento  = tempo_bairro.iloc[-1]
-    bairro_rapido = tempo_bairro.iloc[0]
-
-    col_i1, col_i2 = st.columns(2)
-    with col_i1:
-        st.markdown(f"""
-        <div class="insight red">
-          <div class="insight-title">⚠️ Atenção: {bairro_lento['Bairro']}</div>
-          <div class="insight-text">
-            Tempo médio de <strong>{bairro_lento['Tempo Médio (min)']:.0f} min</strong> — acima da meta de 45 min.
-            Avalie reduzir o raio de entrega ou reforçar a equipe nessa região.
-          </div>
-        </div>
-        """, unsafe_allow_html=True)
-    with col_i2:
-        st.markdown(f"""
-        <div class="insight green">
-          <div class="insight-title">✅ Melhor performance: {bairro_rapido['Bairro']}</div>
-          <div class="insight-text">
-            Tempo médio de <strong>{bairro_rapido['Tempo Médio (min)']:.0f} min</strong>.
-            Entenda o que funciona aqui e replique na operação dos bairros lentos.
-          </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    # ── PREMIUM — Mapa de cancelamentos ──────────────────────────────────
-    st.markdown('<div class="section-header">🗺️ Mapa de Cancelamentos por Região</div>', unsafe_allow_html=True)
-
-    cancel_bairro = (
-        df.groupby("Bairro")
-        .apply(lambda x: pd.Series({
-            "Taxa Cancelamento (%)": x["is_cancelado"].mean() * 100,
-            "Total Pedidos":         len(x),
-            "Cancelamentos":         x["is_cancelado"].sum(),
-            "lat":                   x["lat"].mean(),
-            "lon":                   x["lon"].mean(),
-        }))
-        .reset_index()
-    )
-
-    fig_map = px.scatter_mapbox(
-        cancel_bairro,
-        lat="lat", lon="lon",
-        size="Taxa Cancelamento (%)",
-        color="Taxa Cancelamento (%)",
-        color_continuous_scale=["#34d399","#f59e0b","#f87171"],
-        size_max=32,
-        hover_name="Bairro",
-        hover_data={
-            "Taxa Cancelamento (%)": ":.1f",
-            "Total Pedidos": True,
-            "Cancelamentos": True,
-            "lat": False, "lon": False,
-        },
-        mapbox_style="carto-darkmatter",
-        zoom=11,
-        center={"lat": -23.5505, "lon": -46.6333},
-    )
-    fig_map.update_layout(
-        height=400,
-        margin=dict(l=0, r=0, t=0, b=0),
-        paper_bgcolor="rgba(0,0,0,0)",
-        coloraxis_colorbar=dict(
-            title=dict(
-                text="% Cancel.",
-                font=dict(color="#9090a8"),
-            ),
-            tickfont=dict(color="#9090a8"),
-        ),
-    )
-    st.plotly_chart(fig_map, use_container_width=True)
-
-    # ── PREMIUM — Horários críticos ───────────────────────────────────────
-    st.markdown('<div class="section-header">🕐 Cancelamentos por Horário</div>', unsafe_allow_html=True)
-
-    cancel_hora = (
-        df.groupby("Hora")["is_cancelado"]
-        .agg(["mean","count"])
-        .reset_index()
-        .rename(columns={"mean":"Taxa","count":"Pedidos"})
-    )
-    cancel_hora["pct_label"] = (cancel_hora["Taxa"] * 100).round(1)
-
-    fig_hora = go.Figure(go.Bar(
-        x=cancel_hora["Hora"],
-        y=cancel_hora["pct_label"],
-        marker=dict(
-            color=cancel_hora["pct_label"],
-            colorscale=[[0,"#34d399"],[0.5,"#f59e0b"],[1,"#f87171"]],
-        ),
-        text=cancel_hora["pct_label"].apply(lambda x: f"{x:.0f}%"),
-        textposition="outside",
-        customdata=cancel_hora["Pedidos"],
-        hovertemplate="Hora %{x}h<br>Cancelamento: %{y:.1f}%<br>Pedidos: %{customdata}<extra></extra>",
-    ))
-    fig_hora.update_layout(
-        height=250,
-        margin=dict(l=0, r=0, t=10, b=0),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        xaxis=dict(showgrid=False, color="#9090a8", title="hora do dia",
-                   tickmode="linear", dtick=2),
-        yaxis=dict(showgrid=True, gridcolor="#1a1a28", color="#50507a", ticksuffix="%"),
-        font=dict(family="DM Sans", color="#9090a8"),
-    )
-    st.plotly_chart(fig_hora, use_container_width=True)
-
-    hora_pico = cancel_hora.loc[cancel_hora["pct_label"].idxmax()]
+    melhor = dia_stats.loc[dia_stats["pct_label"].idxmin()]
     st.markdown(f"""
-    <div class="insight yellow">
-      <div class="insight-title">⚠️ Horário crítico: {hora_pico['Hora']:.0f}h</div>
+    <div class="insight green">
+      <div class="insight-title">✅ Melhor dia: {melhor['Label']}</div>
       <div class="insight-text">
-        Pico de cancelamentos às <strong>{hora_pico['Hora']:.0f}h</strong>
-        com {hora_pico['pct_label']:.1f}% — maior taxa do dia.
-        Reforce equipe ou reduza o raio de entrega nesse período.
+        Apenas {melhor['pct_label']:.1f}% de cancelamentos.
+        Entenda o que funciona aqui e replique nos dias críticos.
       </div>
     </div>
     """, unsafe_allow_html=True)
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  SEÇÃO 3 — |  PREMIUM: conteúdo completo
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Tempo por bairro ──────────────────────────────────────────────────
+st.markdown('<div class="section-header">📍 Tempo Médio de Entrega por Bairro</div>', unsafe_allow_html=True)
+
+# Filtro de bairro na própria página
+bairros_disp = sorted(df_ok["Bairro"].dropna().unique().tolist())
+bairros_sel  = st.multiselect("Filtrar bairros", bairros_disp, default=bairros_disp, key="op_bairros")
+df_filt = df_ok[df_ok["Bairro"].isin(bairros_sel)] if bairros_sel else df_ok
+
+tempo_bairro = (
+    df_filt.groupby("Bairro")["Tempo de Entrega (min)"]
+    .agg(["mean", "count"])
+    .reset_index()
+    .rename(columns={"mean": "Tempo Médio (min)", "count": "Pedidos"})
+    .sort_values("Tempo Médio (min)", ascending=True)
+)
+
+fig_tempo = go.Figure(go.Bar(
+    y=tempo_bairro["Bairro"],
+    x=tempo_bairro["Tempo Médio (min)"],
+    orientation="h",
+    marker=dict(
+        color=tempo_bairro["Tempo Médio (min)"],
+        colorscale=[[0,"#34d399"],[0.5,"#f59e0b"],[1,"#f87171"]],
+    ),
+    text=tempo_bairro["Tempo Médio (min)"].apply(lambda x: f"{x:.0f} min"),
+    textposition="outside",
+    customdata=tempo_bairro["Pedidos"],
+    hovertemplate="%{y}<br>Tempo médio: %{x:.0f} min<br>Pedidos: %{customdata}<extra></extra>",
+))
+fig_tempo.update_layout(
+    height=380,
+    margin=dict(l=0, r=60, t=8, b=0),
+    paper_bgcolor="rgba(0,0,0,0)",
+    plot_bgcolor="rgba(0,0,0,0)",
+    xaxis=dict(showgrid=True, gridcolor="#1a1a28", color="#50507a", title="minutos"),
+    yaxis=dict(showgrid=False, color="#9090a8"),
+    font=dict(family="DM Sans", color="#9090a8"),
+)
+st.plotly_chart(fig_tempo, use_container_width=True)
+
+# Insights automáticos
+bairro_lento  = tempo_bairro.iloc[-1]
+bairro_rapido = tempo_bairro.iloc[0]
+
+col_i1, col_i2 = st.columns(2)
+with col_i1:
+    st.markdown(f"""
+    <div class="insight red">
+        <div class="insight-title">⚠️ Atenção: {bairro_lento['Bairro']}</div>
+        <div class="insight-text">
+        Tempo médio de <strong>{bairro_lento['Tempo Médio (min)']:.0f} min</strong> — acima da meta de 45 min.
+        Avalie reduzir o raio de entrega ou reforçar a equipe nessa região.
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+with col_i2:
+    st.markdown(f"""
+    <div class="insight green">
+        <div class="insight-title">✅ Melhor performance: {bairro_rapido['Bairro']}</div>
+        <div class="insight-text">
+        Tempo médio de <strong>{bairro_rapido['Tempo Médio (min)']:.0f} min</strong>.
+        Entenda o que funciona aqui e replique na operação dos bairros lentos.
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ── PREMIUM — Mapa de cancelamentos ──────────────────────────────────
+st.markdown('<div class="section-header">🗺️ Mapa de Cancelamentos por Região</div>', unsafe_allow_html=True)
+
+cancel_bairro = (
+    df.groupby("Bairro")
+    .apply(lambda x: pd.Series({
+        "Taxa Cancelamento (%)": x["is_cancelado"].mean() * 100,
+        "Total Pedidos":         len(x),
+        "Cancelamentos":         x["is_cancelado"].sum(),
+        "lat":                   x["lat"].mean(),
+        "lon":                   x["lon"].mean(),
+    }))
+    .reset_index()
+)
+
+fig_map = px.scatter_mapbox(
+    cancel_bairro,
+    lat="lat", lon="lon",
+    size="Taxa Cancelamento (%)",
+    color="Taxa Cancelamento (%)",
+    color_continuous_scale=["#34d399","#f59e0b","#f87171"],
+    size_max=32,
+    hover_name="Bairro",
+    hover_data={
+        "Taxa Cancelamento (%)": ":.1f",
+        "Total Pedidos": True,
+        "Cancelamentos": True,
+        "lat": False, "lon": False,
+    },
+    mapbox_style="carto-darkmatter",
+    zoom=11,
+    center={"lat": -23.5505, "lon": -46.6333},
+)
+fig_map.update_layout(
+    height=400,
+    margin=dict(l=0, r=0, t=0, b=0),
+    paper_bgcolor="rgba(0,0,0,0)",
+    coloraxis_colorbar=dict(
+        title=dict(
+            text="% Cancel.",
+            font=dict(color="#9090a8"),
+        ),
+        tickfont=dict(color="#9090a8"),
+    ),
+)
+st.plotly_chart(fig_map, use_container_width=True)
+
+# ── PREMIUM — Horários críticos ───────────────────────────────────────
+st.markdown('<div class="section-header">🕐 Cancelamentos por Horário</div>', unsafe_allow_html=True)
+
+cancel_hora = (
+    df.groupby("Hora")["is_cancelado"]
+    .agg(["mean","count"])
+    .reset_index()
+    .rename(columns={"mean":"Taxa","count":"Pedidos"})
+)
+cancel_hora["pct_label"] = (cancel_hora["Taxa"] * 100).round(1)
+
+fig_hora = go.Figure(go.Bar(
+    x=cancel_hora["Hora"],
+    y=cancel_hora["pct_label"],
+    marker=dict(
+        color=cancel_hora["pct_label"],
+        colorscale=[[0,"#34d399"],[0.5,"#f59e0b"],[1,"#f87171"]],
+    ),
+    text=cancel_hora["pct_label"].apply(lambda x: f"{x:.0f}%"),
+    textposition="outside",
+    customdata=cancel_hora["Pedidos"],
+    hovertemplate="Hora %{x}h<br>Cancelamento: %{y:.1f}%<br>Pedidos: %{customdata}<extra></extra>",
+))
+fig_hora.update_layout(
+    height=250,
+    margin=dict(l=0, r=0, t=10, b=0),
+    paper_bgcolor="rgba(0,0,0,0)",
+    plot_bgcolor="rgba(0,0,0,0)",
+    xaxis=dict(showgrid=False, color="#9090a8", title="hora do dia",
+                tickmode="linear", dtick=2),
+    yaxis=dict(showgrid=True, gridcolor="#1a1a28", color="#50507a", ticksuffix="%"),
+    font=dict(family="DM Sans", color="#9090a8"),
+)
+st.plotly_chart(fig_hora, use_container_width=True)
+
+hora_pico = cancel_hora.loc[cancel_hora["pct_label"].idxmax()]
+st.markdown(f"""
+<div class="insight yellow">
+    <div class="insight-title">⚠️ Horário crítico: {hora_pico['Hora']:.0f}h</div>
+    <div class="insight-text">
+    Pico de cancelamentos às <strong>{hora_pico['Hora']:.0f}h</strong>
+    com {hora_pico['pct_label']:.1f}% — maior taxa do dia.
+    Reforce equipe ou reduza o raio de entrega nesse período.
+    </div>
+</div>
+""", unsafe_allow_html=True)

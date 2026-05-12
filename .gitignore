@@ -34,3 +34,9 @@ Thumbs.db
 clients/*/.env
 clients/*/data/
 clients/*/output/
+
+# Credentials
+credentials.json
+
+# Testes
+test_sheets.py

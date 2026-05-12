@@ -10,7 +10,7 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from utils import (
     generate_mock_ifood_data, process_ifood_data, get_kpis,
-    detectar_modo, inject_css, render_sidebar, render_lock_card,
+    detectar_modo, inject_css, render_sidebar,
     gerar_plano_automatico, calcular_choque, CONFIANCA
 )
 
@@ -25,7 +25,6 @@ st.set_page_config(
 inject_css()
 render_sidebar(active="plano")
 acesso = detectar_modo()
-modo   = acesso["modo"]
 
 # ── Dados ─────────────────────────────────────────────────────────────────────
 if "df_main" not in st.session_state:
@@ -34,53 +33,7 @@ if "df_main" not in st.session_state:
 df = st.session_state["df_main"]
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  BLOQUEIO TOTAL PARA MODO DEMO
-# ─────────────────────────────────────────────────────────────────────────────
-if modo == "demo":
-    st.markdown("""
-    <div style="font-family:'Syne',sans-serif;font-size:28px;font-weight:800;
-      color:#2f5f98;line-height:1.2;margin-bottom:6px;">
-      🧠 Plano de Crescimento
-    </div>
-    <div style="color:#2f5f98;font-size:14px;margin-bottom:32px;">
-      Resumo executivo com os problemas rankeados por impacto financeiro e o plano de ação priorizado.
-    </div>
-    """, unsafe_allow_html=True)
-
-    # Preview do que existe, completamente borrado
-    st.markdown('<div style="opacity:0.12;filter:blur(5px);pointer-events:none;user-select:none;">', unsafe_allow_html=True)
-
-    # Gera o plano real mas só mostra borrado
-    plano = gerar_plano_automatico(df)
-    choque = calcular_choque(df)
-
-    for i, p in enumerate(plano["problemas"][:3]):
-        st.markdown(f"""
-        <div class="plano-card">
-          <div class="plano-cat">{p['categoria']} · Problema #{i+1}</div>
-          <div class="plano-title">{p['titulo']}</div>
-          <div class="plano-desc">{p['descricao']}</div>
-          <div class="plano-impacto">💸 Impacto estimado: R$ {p['impacto_r']:,.0f}</div>
-          {''.join(f'<div class="plano-acao">→ {a}</div>' for a in p['acoes'])}
-        </div>
-        """, unsafe_allow_html=True)
-
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    # Lock card por cima
-    render_lock_card(
-        titulo="Plano de Crescimento Completo",
-        itens_bloqueados=[
-            "Resumo executivo com impacto total em R$/mês",
-            "Problemas rankeados por prioridade e impacto financeiro",
-            "Plano de ação item a item com próximos passos claros",
-            "Observações personalizadas do consultor",
-        ],
-    )
-    st.stop()
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  MODO PREMIUM — conteúdo completo
+#  conteúdo completo
 # ─────────────────────────────────────────────────────────────────────────────
 kpis   = get_kpis(df)
 choque = calcular_choque(df)
