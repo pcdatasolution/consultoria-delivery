@@ -36,8 +36,11 @@ df = st.session_state["df_main"]
 #  conteúdo completo
 # ─────────────────────────────────────────────────────────────────────────────
 kpis   = get_kpis(df)
-choque = calcular_choque(df)
-plano  = gerar_plano_automatico(df)
+dias_churn = st.session_state.get("config", {}).get("churn", 30)
+choque     = calcular_choque(df, dias_churn=dias_churn)
+config   = st.session_state.get("config", {})
+cardapio = st.session_state.get("cardapio", {})
+plano    = gerar_plano_automatico(df, config=config, cardapio=cardapio)
 nome_cliente = acesso.get("cliente", "")
 
 # ── Header ────────────────────────────────────────────────────────────────────

@@ -33,7 +33,9 @@ df    = st.session_state["df_main"]
 df_ok = df[~df["is_cancelado"]].copy()
 
 # ── Métricas de clientes (base para ambos os modos) ───────────────────────────
-hoje = df_ok["Data do Pedido"].max()
+config     = st.session_state.get("config", {})
+dias_churn = config.get("churn", 30)
+hoje       = df_ok["Data do Pedido"].max()
 
 clientes = (
     df_ok.groupby("ID do Cliente")
@@ -52,12 +54,14 @@ clientes["intervalo_medio"] = (
 )
 
 n_total    = len(clientes)
-n_inativos = len(clientes[clientes["dias_inativo"] > 30])
+n_inativos = len(clientes[clientes["dias_inativo"] > dias_churn])
 n_ativos   = n_total - n_inativos
 n_recorrentes = len(clientes[clientes["pedidos"] > 1])
 pct_retorno   = n_recorrentes / n_total * 100 if n_total else 0
 pct_ativos   = n_ativos / n_total * 100 if n_total else 0
-pct_churn   = n_inativos / n_total * 100 if n_total else 0
+pct_churn = n_inativos / n_total * 100 if n_total else 0
+# Guarda no session_state para o Plano usar
+st.session_state["dias_churn"] = dias_churn
 intervalo   = clientes["intervalo_medio"].median()
 ticket_med  = df_ok["Valor Bruto"].mean()
 

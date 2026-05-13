@@ -46,7 +46,7 @@ dias_churn = config.get("churn", 30)
 
 df     = st.session_state["df_main"]
 kpis   = get_kpis(df)
-choque = calcular_choque(df)
+choque = calcular_choque(df, dias_churn=dias_churn)
 
 
 

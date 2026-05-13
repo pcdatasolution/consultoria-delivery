@@ -559,7 +559,7 @@ def get_kpis(df: pd.DataFrame) -> dict:
 #  CHOQUE DE REALIDADE
 # ─────────────────────────────────────────────
 
-def calcular_choque(df: pd.DataFrame) -> dict:
+def calcular_choque(df: pd.DataFrame, dias_churn: int = 30) -> dict:
     ok = df[~df["is_cancelado"]].copy()
 
     # Itens-problema
@@ -582,7 +582,7 @@ def calcular_choque(df: pd.DataFrame) -> dict:
               .agg(ultimo=("Data do Pedido","max"), pedidos=("ID do Pedido","count"))
               .reset_index())
     cli["dias_inativo"] = (hoje - cli["ultimo"]).dt.days
-    inativos   = cli[cli["dias_inativo"] > 30]
+    inativos   = cli[cli["dias_inativo"] > dias_churn]
     n_inativos = len(inativos)
     pct_churn  = n_inativos / len(cli) * 100 if len(cli) else 0
 
@@ -620,240 +620,272 @@ CONFIANCA = {
 }
  
  
-def gerar_plano_automatico(df: pd.DataFrame) -> dict:
-    ok     = df[~df["is_cancelado"]].copy()
-    choque = calcular_choque(df)
-    kpis   = get_kpis(df)
- 
+def gerar_plano_automatico(df: pd.DataFrame, config: dict = None, cardapio: dict = None) -> dict:
+    if config is None:
+        config = {}
+    if cardapio is None:
+        cardapio = {}
+
+    ok          = df[~df["is_cancelado"]].copy()
+    dias_churn  = int(config.get("churn", 30))
+    margem_proxy = float(config.get("margem_proxy", MARGEM_PROXY))
+
+    hoje   = ok["Data do Pedido"].max()
+    dias   = max((hoje - ok["Data do Pedido"].min()).days, 1)
+    fator  = 30 / dias
+    n_semanas = max(dias // 7, 1)
+
+    # Fallback se histórico curto
+    historico_curto = n_semanas < 8
+
+    ok["Semana"] = ok["Data do Pedido"].dt.to_period("W")
+
     problemas = []
- 
-    # ── cardápio ─────────────────────────────────────────────────────────
-    item_s = (ok.groupby("Nome do Item")
-               .agg(vendas=("Nome do Item","count"), receita=("Valor dos Itens","sum"))
-               .reset_index())
- 
-    # Verificar se custo veio de dado real ou proxy
-    tem_custo_real = any(n in ITENS_CARDAPIO for n in item_s["Nome do Item"])
- 
-    item_s["margem"] = item_s["Nome do Item"].apply(
-        lambda n: (ITENS_CARDAPIO[n]["preco"]-ITENS_CARDAPIO[n]["custo"])/ITENS_CARDAPIO[n]["preco"]
-        if n in ITENS_CARDAPIO else MARGEM_PROXY)
-    item_s["ticket"] = item_s["receita"] / item_s["vendas"]
-    med_v = item_s["vendas"].median()
-    med_m = item_s["margem"].median()
- 
-    cavalos    = item_s[(item_s["vendas"] >= med_v) & (item_s["margem"] < med_m)].sort_values("receita", ascending=False)
-    potenciais = item_s[(item_s["vendas"] < med_v)  & (item_s["margem"] >= med_m)].sort_values("margem", ascending=False)
- 
-    if len(cavalos) > 0:
-        nomes = ", ".join(cavalos["Nome do Item"].head(3).tolist())
-        confianca_luc = "alta" if tem_custo_real else "media"
- 
-        acoes = []
-        for _, r in cavalos.head(3).iterrows():
-            m        = r["margem"] * 100
-            vendas_r = int(r["vendas"])
-            ticket_r = r["ticket"]
-            nome     = r["Nome do Item"]
- 
-            # Buscar complementos para combo (itens de baixo custo e alta margem)
-            complementos = item_s[
-                (item_s["Nome do Item"] != nome) &
-                (item_s["margem"] >= med_m) &
-                (item_s["ticket"] < ticket_r * 0.4)
-            ].sort_values("margem", ascending=False)
- 
-            if m < 25:
-                aumento_preco = round(ticket_r * 0.10, 2)
-                ganho_mensal  = round(aumento_preco * vendas_r, 2)
-                acoes.append(
-                    f"**{nome}** — margem de {m:.0f}%, vendeu {vendas_r}x no período. "
-                    f"Aumentar R$ {aumento_preco:.2f} no preço mantendo volume = "
-                    f"+R$ {ganho_mensal:.0f} direto na margem."
-                )
-            elif len(complementos) > 0 and r["vendas"] > med_v * 1.2:
-                comp        = complementos.iloc[0]
-                preco_comp  = comp["ticket"]
-                nome_comp   = comp["Nome do Item"]
-                ticket_novo = round(ticket_r + preco_comp * 0.85, 2)
-                ganho_combo = round((ticket_novo - ticket_r) * vendas_r * 0.35, 2)
-                acoes.append(
-                    f"**{nome}** — criar combo com {nome_comp} "
-                    f"(+R$ {preco_comp*0.85:.2f} no ticket). "
-                    f"Se 35% dos pedidos virar combo = +R$ {ganho_combo:.0f} no período."
-                )
-            else:
-                aumento = round(ticket_r * 0.08, 2)
-                acoes.append(
-                    f"**{nome}** — {vendas_r} pedidos no período, margem apertada. "
-                    f"Testar reajuste de R$ {aumento:.2f} — se volume se mantiver, "
-                    f"adiciona R$ {aumento*vendas_r:.0f} ao resultado."
-                )
- 
-        impacto = choque["perda_margem_base"]
-        dias    = max((ok["Data do Pedido"].max() - ok["Data do Pedido"].min()).days, 1)
-        fator   = 30 / dias
-        imp_mes_low  = impacto * fator * 0.6
-        imp_mes_high = impacto * fator * 1.0
- 
-        raciocinio = (
-            f"{len(cavalos)} {'item' if len(cavalos)==1 else 'itens'} com volume acima da média "
-            f"e margem abaixo — diferença acumulada de R$ {impacto:.0f} no período "
-            f"(~R$ {imp_mes_low:.0f} – R$ {imp_mes_high:.0f}/mês projetado)."
+
+    # ── helper σ ─────────────────────────────────────────────────────────
+    def sigma_oportunidade(serie: pd.Series):
+        """Retorna (media, std, pico, atual, gap)"""
+        media = serie.mean()
+        std   = serie.std() if len(serie) > 1 else 0
+        pico  = media + std          # média + 1σ
+        atual = serie.iloc[-1]       # semana mais recente
+        gap   = max(pico - atual, 0)
+        return media, std, pico, atual, gap
+
+    # ─────────────────────────────────────────────────────────────────────
+    # 1. TICKET MÉDIO SEMANAL
+    # ─────────────────────────────────────────────────────────────────────
+    ticket_sem = ok.groupby("Semana")["Valor Bruto"].mean()
+    if len(ticket_sem) >= 3:
+        media_tk, std_tk, pico_tk, atual_tk, gap_tk = sigma_oportunidade(ticket_sem)
+        pedidos_mes = ok.groupby("Semana").size().mean() * 4
+        impacto_tk  = gap_tk * pedidos_mes
+
+        if gap_tk > 0.5 and impacto_tk > 100:
+            problemas.append({
+                "categoria":  "🎫 Ticket Médio",
+                "titulo":     f"Ticket médio caiu para R$ {atual_tk:.2f} — potencial de R$ {pico_tk:.2f}",
+                "descricao":  f"No seu melhor período recente, o ticket médio chegou a R$ {pico_tk:.2f}. Hoje está em R$ {atual_tk:.2f}. Clientes estão pedindo menos itens por pedido.",
+                "raciocinio": f"Média histórica: R$ {media_tk:.2f} ± R$ {std_tk:.2f}. Gap de R$ {gap_tk:.2f} × ~{pedidos_mes:.0f} pedidos/mês = R$ {impacto_tk:.0f} de oportunidade.",
+                "impacto_r":  impacto_tk,
+                "confianca":  "media" if historico_curto else "alta",
+                "acoes": [
+                    f"Criar combo ou sugestão de adicional para aumentar o ticket em R$ {gap_tk*0.5:.2f} por pedido.",
+                    f"Revisar se algum item de alto ticket saiu do cardápio recentemente.",
+                    f"Ativar 'peça também' no iFood com itens complementares aos mais vendidos.",
+                ],
+                "prioridade": 1 if gap_tk / media_tk > 0.15 else 2,
+            })
+
+    # ─────────────────────────────────────────────────────────────────────
+    # 2. TAXA DE CANCELAMENTO SEMANAL
+    # ─────────────────────────────────────────────────────────────────────
+    cancel_sem = df.groupby(df["Data do Pedido"].dt.to_period("W")).apply(
+        lambda x: x["is_cancelado"].sum() / len(x) * 100
+    )
+    if len(cancel_sem) >= 3:
+        media_ca, std_ca, _, atual_ca, _ = sigma_oportunidade(cancel_sem)
+        # Aqui "gap" é inverso — queremos baixo cancelamento
+        # pico ruim = média + 1σ; bom = média - 1σ
+        meta_ca  = max(media_ca - std_ca, 0)
+        gap_ca   = max(atual_ca - meta_ca, 0)
+
+        if gap_ca > 1.0:
+            ticket_med   = ok["Valor Bruto"].mean()
+            pedidos_total = len(df)
+            cancel_evit  = round(pedidos_total * (gap_ca / 100) * 0.35, 0)
+            impacto_ca   = cancel_evit * ticket_med * fator
+
+            problemas.append({
+                "categoria":  "🚚 Operação",
+                "titulo":     f"Cancelamento em {atual_ca:.1f}% — acima do seu próprio histórico",
+                "descricao":  f"No seu melhor período, a taxa de cancelamento ficou em {meta_ca:.1f}%. Hoje está em {atual_ca:.1f}%. Cada ponto percentual a mais representa pedidos perdidos.",
+                "raciocinio": f"Gap de {gap_ca:.1f}pp × {pedidos_total} pedidos × 35% evitáveis × R$ {ticket_med:.0f} ticket = R$ {impacto_ca:.0f}/mês.",
+                "impacto_r":  impacto_ca,
+                "confianca":  "media" if historico_curto else "alta",
+                "acoes": [
+                    "Identificar se cancelamentos concentram em horário ou bairro específico (ver aba Operação).",
+                    "Verificar itens que aparecem com frequência em pedidos cancelados.",
+                    "Ativar confirmação automática de pedido no iFood — reduz desistência.",
+                ],
+                "prioridade": 1 if gap_ca > 5 else 2,
+            })
+
+    # ─────────────────────────────────────────────────────────────────────
+    # 3. TEMPO DE ENTREGA SEMANAL
+    # ─────────────────────────────────────────────────────────────────────
+    if "Tempo de Entrega (min)" in ok.columns:
+        tempo_sem = ok.groupby("Semana")["Tempo de Entrega (min)"].mean()
+        if len(tempo_sem) >= 3:
+            media_te, std_te, _, atual_te, _ = sigma_oportunidade(tempo_sem)
+            meta_te = max(media_te - std_te, 20)
+            gap_te  = max(atual_te - meta_te, 0)
+
+            if gap_te > 3:
+                impacto_te = len(df[df["is_cancelado"]]) * 0.3 * ok["Valor Bruto"].mean() * fator
+
+                problemas.append({
+                    "categoria":  "🚚 Operação",
+                    "titulo":     f"Tempo de entrega em {atual_te:.0f} min — {gap_te:.0f} min acima do seu melhor",
+                    "descricao":  f"Você já entregou com média de {meta_te:.0f} min. Hoje está em {atual_te:.0f} min. Entregas mais lentas aumentam cancelamentos e reduzem avaliação.",
+                    "raciocinio": f"Média histórica: {media_te:.0f} min ± {std_te:.0f} min. Gap de {gap_te:.0f} min — recuperar esse nível pode evitar ~30% dos cancelamentos atuais.",
+                    "impacto_r":  impacto_te,
+                    "confianca":  "media",
+                    "acoes": [
+                        f"Revisar raio de entrega nos bairros com maior tempo médio.",
+                        f"Verificar cobertura de motoboys nos horários de pico.",
+                        f"Considerar taxa extra para bairros acima de 6 km.",
+                    ],
+                    "prioridade": 1 if gap_te > 10 else 2,
+                })
+
+    # ─────────────────────────────────────────────────────────────────────
+    # 4. TEMPO ENTRE COMPRAS (proxy churn)
+    # ─────────────────────────────────────────────────────────────────────
+    cli = (ok.groupby("ID do Cliente")
+             .agg(primeiro=("Data do Pedido","min"),
+                  ultimo  =("Data do Pedido","max"),
+                  pedidos =("ID do Pedido",  "count"))
+             .reset_index())
+    cli_recorrentes = cli[cli["pedidos"] > 1].copy()
+
+    if len(cli_recorrentes) >= 10:
+        cli_recorrentes["intervalo"] = (
+            (cli_recorrentes["ultimo"] - cli_recorrentes["primeiro"]).dt.days
+            / (cli_recorrentes["pedidos"] - 1)
         )
- 
-        problemas.append({
-            "categoria":   "💰 Lucratividade",
-            "titulo":      f"{len(cavalos)} {'item' if len(cavalos)==1 else 'itens'} vendendo muito, mas com margem baixa",
-            "descricao":   f"Itens como {nomes} representam boa parte do volume, mas a margem está abaixo da média do seu cardápio. Você trabalha mais para ganhar menos nesses produtos.",
-            "raciocinio":  raciocinio,
-            "impacto_r":   impacto,
-            "confianca":   confianca_luc,
-            "acoes":       acoes,
-            "prioridade":  1 if impacto > 500 else 2,
+        # Série semanal: mediana do intervalo dos clientes com último pedido naquela semana
+        ok2 = ok.merge(cli_recorrentes[["ID do Cliente","intervalo"]], on="ID do Cliente", how="inner")
+        intervalo_sem = ok2.groupby("Semana")["intervalo"].median()
+
+        if len(intervalo_sem) >= 3:
+            media_iv, std_iv, _, atual_iv, _ = sigma_oportunidade(intervalo_sem)
+            meta_iv = max(media_iv - std_iv, 1)
+            gap_iv  = max(atual_iv - meta_iv, 0)
+
+            if gap_iv > 2:
+                ticket_med   = ok["Valor Bruto"].mean()
+                n_recorrentes = len(cli_recorrentes)
+                pedidos_extras = n_recorrentes * (gap_iv / max(atual_iv, 1))
+                impacto_iv    = pedidos_extras * ticket_med * fator
+
+                problemas.append({
+                    "categoria":  "❤️ Fidelização",
+                    "titulo":     f"Clientes voltando a cada {atual_iv:.0f} dias — antes eram {meta_iv:.0f} dias",
+                    "descricao":  f"O intervalo médio entre compras dos clientes recorrentes aumentou {gap_iv:.0f} dias. Eles estão comprando com menos frequência — sinal de churn gradual.",
+                    "raciocinio": f"Gap de {gap_iv:.0f} dias × {n_recorrentes} clientes recorrentes = ~{pedidos_extras:.0f} pedidos/mês não realizados × R$ {ticket_med:.0f} = R$ {impacto_iv:.0f}.",
+                    "impacto_r":  impacto_iv,
+                    "confianca":  "media" if historico_curto else "alta",
+                    "acoes": [
+                        f"Campanha de reativação para clientes sem pedido há mais de {dias_churn} dias.",
+                        f"Criar programa de fidelidade simples — 'na 5ª compra, ganhe X'.",
+                        f"Verificar se mudança no cardápio ou preço coincide com o aumento do intervalo.",
+                    ],
+                    "prioridade": 1 if gap_iv > 7 else 2,
+                })
+
+    # ─────────────────────────────────────────────────────────────────────
+    # 5. CLIENTES ATIVOS %
+    # ─────────────────────────────────────────────────────────────────────
+    ativos_sem = ok.groupby("Semana").apply(
+        lambda x: x["ID do Cliente"].nunique()
+    )
+    total_cli = ok["ID do Cliente"].nunique()
+
+    if len(ativos_sem) >= 3:
+        pct_ativos_sem = ativos_sem / total_cli * 100
+        media_at, std_at, pico_at, atual_at, gap_at = sigma_oportunidade(pct_ativos_sem)
+
+        if gap_at > 2:
+            cli_gap      = round(total_cli * gap_at / 100, 0)
+            ticket_med   = ok["Valor Bruto"].mean()
+            impacto_at   = cli_gap * ticket_med * fator
+
+            problemas.append({
+                "categoria":  "❤️ Fidelização",
+                "titulo":     f"Base ativa caiu para {atual_at:.1f}% — já foi {pico_at:.1f}%",
+                "descricao":  f"No seu melhor período, {pico_at:.1f}% da base de clientes estava ativa. Hoje só {atual_at:.1f}% pediu recentemente. São ~{cli_gap:.0f} clientes que sumiram.",
+                "raciocinio": f"Gap de {gap_at:.1f}pp × {total_cli} clientes = {cli_gap:.0f} clientes × R$ {ticket_med:.0f} ticket = R$ {impacto_at:.0f}/mês.",
+                "impacto_r":  impacto_at,
+                "confianca":  "media" if historico_curto else "alta",
+                "acoes": [
+                    f"Identificar os {int(cli_gap)} clientes inativos de maior ticket histórico para abordagem prioritária.",
+                    f"Criar cupom exclusivo para clientes sem pedido há mais de {dias_churn} dias.",
+                    f"Revisar se houve mudança de preço ou cardápio que coincide com a queda.",
+                ],
+                "prioridade": 1 if gap_at > 10 else 2,
+            })
+
+    # ─────────────────────────────────────────────────────────────────────
+    # 6. PRODUTOS INDIVIDUAIS
+    # ─────────────────────────────────────────────────────────────────────
+    item_sem = (ok.groupby(["Semana","Nome do Item"])
+                  .size()
+                  .reset_index(name="vendas"))
+
+    itens_lista = []
+    for item, grp in item_sem.groupby("Nome do Item"):
+        if len(grp) < 3:
+            continue
+
+        serie = grp.set_index("Semana")["vendas"]
+        media_it, std_it, pico_it, atual_it, gap_it = sigma_oportunidade(serie)
+
+        if gap_it < 1:
+            continue
+
+        # Margem: real do cardápio ou proxy
+        if item in cardapio:
+            margem_r   = cardapio[item]["margem"]
+            ticket_it  = cardapio[item]["preco"]
+            tem_real   = True
+        else:
+            margem_r   = margem_proxy
+            ticket_it  = ok[ok["Nome do Item"] == item]["Valor Bruto"].mean()
+            tem_real   = False
+
+        margem_R   = ticket_it * margem_r          # margem em R$ por unidade
+        impacto_it = gap_it * margem_R * 4         # gap semanal × 4 semanas
+
+        itens_lista.append({
+            "item":      item,
+            "gap":       gap_it,
+            "pico":      pico_it,
+            "atual":     atual_it,
+            "margem_r":  margem_R,
+            "impacto":   impacto_it,
+            "tem_real":  tem_real,
         })
- 
-    if len(potenciais) > 0:
-        nomes = ", ".join(potenciais["Nome do Item"].head(2).tolist())
-        confianca_pot = "alta" if tem_custo_real else "media"
-        impacto_pot   = potenciais["receita"].sum() * 0.25
- 
-        acoes = []
-        for _, r in potenciais.head(2).iterrows():
-            m       = r["margem"] * 100
-            vendas_r = int(r["vendas"])
-            nome    = r["Nome do Item"]
-            # Estimar ganho se dobrar o volume
-            ganho_dobrar = round(r["receita"] * r["margem"] * 0.5, 2)
-            acoes.append(
-                f"**{nome}** — margem de {m:.0f}%, só {vendas_r} pedidos no período. "
-                f"Destacar com foto e descrição no app — dobrar o volume geraria "
-                f"+R$ {ganho_dobrar:.0f} de margem adicional."
-            )
- 
+
+    itens_lista.sort(key=lambda x: -x["impacto"])
+
+    for it in itens_lista[:3]:
         problemas.append({
-            "categoria":  "💰 Lucratividade",
-            "titulo":     f"{len(potenciais)} {'item' if len(potenciais)==1 else 'itens'} com ótima margem sendo ignorados",
-            "descricao":  f"{nomes} têm margem acima da média mas baixo volume. São os produtos mais rentáveis do seu cardápio — e poucos clientes os pedem.",
-            "raciocinio": f"Potencial de +R$ {impacto_pot:.0f} no período se esses itens dobrarem de volume.",
-            "impacto_r":  impacto_pot,
-            "confianca":  confianca_pot,
-            "acoes":      acoes,
-            "prioridade": 2,
-        })
- 
-    # ── operação ─────────────────────────────────────────────────────────
-    tempo_med = ok["Tempo de Entrega (min)"].mean() if "Tempo de Entrega (min)" in ok.columns else 0
-    tx_cancel = kpis["taxa_cancelamento"]
-    n_cancel  = int(df["is_cancelado"].sum())
-    ticket_med = kpis["ticket_medio"]
- 
-    if tempo_med > 45:
-        lentos = (ok.groupby("Bairro")["Tempo de Entrega (min)"].mean()
-                   .sort_values(ascending=False).head(3).index.tolist())
-        excesso_min  = tempo_med - 45
-        cancel_extra = round(n_cancel * (excesso_min * 0.03), 0)
-        impacto_op   = kpis["perda_cancelamentos"] * 0.40
-        imp_mes_low  = impacto_op * (30 / max((ok["Data do Pedido"].max() - ok["Data do Pedido"].min()).days,1)) * 0.6
-        imp_mes_high = impacto_op * (30 / max((ok["Data do Pedido"].max() - ok["Data do Pedido"].min()).days,1))
- 
-        raciocinio = (
-            f"Tempo médio {tempo_med:.0f} min = {excesso_min:.0f} min acima da meta de 45 min. "
-            f"Cada minuto extra aumenta ~3% a chance de cancelamento — "
-            f"estimativa de {cancel_extra:.0f} cancelamentos evitáveis "
-            f"(~R$ {imp_mes_low:.0f} – R$ {imp_mes_high:.0f}/mês)."
-        )
- 
-        problemas.append({
-            "categoria":  "🚚 Operação",
-            "titulo":     f"Tempo médio de entrega em {tempo_med:.0f} min — acima do ideal",
-            "descricao":  "Entregas longas aumentam cancelamentos e derrubam a avaliação no app. Clientes que esperam mais do que esperavam raramente voltam.",
-            "raciocinio": raciocinio,
-            "impacto_r":  impacto_op,
-            "confianca":  "media",
+            "categoria":  "📦 Produto",
+            "titulo":     f"{it['item']} — vendendo {it['atual']:.0f}/sem, já vendeu {it['pico']:.0f}/sem",
+            "descricao":  f"Volume atual está {it['gap']:.0f} unidades/semana abaixo do pico histórico. Recuperar esse volume vale R$ {it['impacto']:.0f}/mês.",
+            "raciocinio": f"Gap de {it['gap']:.1f} un/sem × R$ {it['margem_r']:.2f} margem × 4 semanas = R$ {it['impacto']:.0f}. Margem {'real do cardápio' if it['tem_real'] else 'estimada por proxy'}.",
+            "impacto_r":  it["impacto"],
+            "confianca":  "alta" if it["tem_real"] else "media",
             "acoes": [
-                f"Reduzir raio de entrega em {lentos[0]} e {lentos[1] if len(lentos)>1 else lentos[0]} — os bairros com pior tempo médio.",
-                f"Ajustar horário de pico: verificar se há motoboys suficientes nos horários de maior volume.",
-                f"Aumentar taxa de entrega para bairros acima de 6 km — desestimula pedidos que prejudicam o tempo médio.",
+                f"Destacar {it['item']} com foto atualizada e descrição no iFood.",
+                f"Testar promoção relâmpago em horário de baixo volume para reativar demanda.",
+                f"Verificar se houve mudança de preço ou ingrediente que coincide com a queda.",
             ],
-            "prioridade": 2 if tempo_med < 55 else 1,
+            "prioridade": 1 if it["impacto"] > 300 else 2,
         })
- 
-    if tx_cancel > 10:
-        cancel_evit   = round(n_cancel * 0.35, 0)
-        recuper       = round(cancel_evit * ticket_med, 2)
-        impacto_can   = kpis["perda_cancelamentos"] * 0.35
-        dias          = max((ok["Data do Pedido"].max() - ok["Data do Pedido"].min()).days, 1)
-        imp_mes       = impacto_can * (30 / dias)
- 
-        raciocinio = (
-            f"{n_cancel} cancelamentos no período = R$ {kpis['perda_cancelamentos']:,.0f} perdidos. "
-            f"Com ajustes operacionais, ~35% são evitáveis ({cancel_evit:.0f} pedidos × "
-            f"R$ {ticket_med:.0f} ticket = R$ {recuper:,.0f} recuperáveis — "
-            f"~R$ {imp_mes:.0f}/mês projetado)."
-        )
- 
-        problemas.append({
-            "categoria":  "🚚 Operação",
-            "titulo":     f"Taxa de cancelamento de {tx_cancel:.1f}% acima da meta de 8%",
-            "descricao":  f"Você perdeu R$ {kpis['perda_cancelamentos']:,.0f} em pedidos cancelados no período. Cancelamento é receita que entra e sai antes de virar lucro.",
-            "raciocinio": raciocinio,
-            "impacto_r":  impacto_can,
-            "confianca":  "media",
-            "acoes": [
-                f"Identificar se os cancelamentos concentram em horário ou bairro específico (ver aba Operação).",
-                f"Verificar se algum item específico aparece em cancelamentos — pode ser problema de estoque ou preparo.",
-                f"Ativar mensagem automática de confirmação de pedido no iFood — reduz desistência por ansiedade.",
-            ],
-            "prioridade": 1 if tx_cancel > 15 else 2,
-        })
- 
-    # ── fidelização ───────────────────────────────────────────────────────
-    pct_c      = choque["pct_churn"]
-    n_inat     = choque["n_inativos"]
-    ticket_med = kpis["ticket_medio"]
- 
-    if pct_c > 40:
-        n_retorno    = round(n_inat * TAXA_RETORNO_CLIENTE, 0)
-        receita_camp = round(n_retorno * ticket_med, 2)
-        custo_cupom  = round(n_retorno * 12.50, 2)   # cupom médio de R$ 12,50
-        lucro_camp   = round(receita_camp - custo_cupom, 2)
-        imp_low      = lucro_camp * 0.7
-        imp_high     = lucro_camp * 1.1
- 
-        raciocinio = (
-            f"{n_inat} clientes inativos há +30 dias → reativar ~25% = "
-            f"{n_retorno:.0f} clientes voltando → "
-            f"{n_retorno:.0f} × R$ {ticket_med:.0f} ticket = R$ {receita_camp:,.0f} em receita. "
-            f"Descontando cupom de R$ 12,50 por cliente = "
-            f"R$ {imp_low:,.0f} – R$ {imp_high:,.0f} de retorno líquido."
-        )
- 
-        problemas.append({
-            "categoria":  "❤️ Fidelização",
-            "titulo":     f"{pct_c:.0f}% dos clientes não voltaram a pedir",
-            "descricao":  f"Dos clientes que já compraram de você, {pct_c:.0f}% estão inativos há mais de 30 dias. Trazer cliente de volta custa 5x menos do que conquistar um novo.",
-            "raciocinio": raciocinio,
-            "impacto_r":  choque["perda_retencao_base"],
-            "confianca":  "alta",
-            "acoes": [
-                f"Criar campanha no iFood para os {n_inat} clientes inativos com cupom de R$ 10–15.",
-                f"Priorizar os {min(20, n_inat)} clientes de maior ticket histórico para abordagem manual.",
-                f"Meta: {n_retorno:.0f} clientes voltando no próximo mês = R$ {receita_camp:,.0f} em receita adicional.",
-            ],
-            "prioridade": 1 if pct_c > 55 else 2,
-        })
- 
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Ranking final
+    # ─────────────────────────────────────────────────────────────────────
     problemas.sort(key=lambda x: (x["prioridade"], -x["impacto_r"]))
- 
+
     impacto_total = sum(p["impacto_r"] for p in problemas)
-    dias  = max((ok["Data do Pedido"].max() - ok["Data do Pedido"].min()).days, 1)
-    fator = 30 / dias
- 
+
     return {
         "problemas":           problemas,
-        "impacto_mensal_low":  max(impacto_total * fator * 0.60, 0),
-        "impacto_mensal_high": max(impacto_total * fator * 1.00, 0),
+        "impacto_mensal_low":  max(impacto_total * 0.65, 0),
+        "impacto_mensal_high": max(impacto_total * 1.10, 0),
         "n_problemas":         len(problemas),
     }
 
