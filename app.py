@@ -10,7 +10,7 @@ import sys, os
 
 sys.path.insert(0, os.path.dirname(__file__))
 from utils import (
-    carregar_pedidos_sheets, generate_mock_ifood_data, process_ifood_data, get_kpis,
+    carregar_pedidos_sheets, generate_mock_ifood_data, gerar_plano_automatico, process_ifood_data, get_kpis,
     calcular_choque, detectar_modo, inject_css, render_sidebar, carregar_dados_cliente
 )
 
@@ -35,18 +35,21 @@ if "df_main" not in st.session_state:
         st.session_state["df_main"] = df_sheets
         st.session_state["is_mock"] = False
         dados_cliente = carregar_dados_cliente(sheets_id)
-        st.session_state["config"] = dados_cliente.get("config", {})
+        st.session_state["config"]   = dados_cliente.get("config", {})
+        st.session_state["cardapio"] = dados_cliente.get("cardapio", {})
     else:
         st.session_state["df_main"] = process_ifood_data(generate_mock_ifood_data(800))
         st.session_state["is_mock"] = True
         st.session_state["config"] = {}
 
-config = st.session_state.get("config", {})
+config   = st.session_state.get("config", {})
+cardapio = st.session_state.get("cardapio", {})
 dias_churn = config.get("churn", 30)
 
 df     = st.session_state["df_main"]
 kpis   = get_kpis(df)
 choque = calcular_choque(df, dias_churn=dias_churn)
+plano  = gerar_plano_automatico(df, config=config, cardapio=cardapio)
 
 
 
@@ -64,9 +67,9 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-perda_low_fmt  = f"R$ {choque['perda_low']:,.0f}".replace(",", ".")
-perda_high_fmt = f"R$ {choque['perda_high']:,.0f}".replace(",", ".")
-n_itens = choque["n_itens_problema"]
+perda_low_fmt  = f"R$ {plano['impacto_mensal_low']:,.0f}".replace(",", ".")
+perda_high_fmt = f"R$ {plano['impacto_mensal_high']:,.0f}".replace(",", ".")
+n_itens   = choque["n_itens_problema"]
 pct_churn = choque["pct_churn"]
 
 st.markdown(f"""

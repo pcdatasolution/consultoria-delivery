@@ -303,6 +303,7 @@ def render_sidebar(active: str = "home"):
         st.page_link("pages/3_Fidelizacao.py",   label="❤️  Fidelização")
 
         st.page_link("pages/4_Plano.py",     label="🧠  Plano de Crescimento")
+        st.page_link("pages/5_Experimentos.py", label="⚗️  Experimentos")
 
         st.markdown("""
         <div style="height:1px;background:#e5e9f0;margin:14px 0 12px;"></div>
@@ -374,22 +375,6 @@ def render_sidebar(active: str = "home"):
             )
             if ajuste:
                 st.session_state["ajuste_manual"] = ajuste
-
-
-def render_lock_card(titulo: str, itens_bloqueados: list, wpp_numero: str = "5512996320085"):
-    """Card padrão de bloqueio premium."""
-    itens_html = "".join(f"<li>{i}</li>" for i in itens_bloqueados)
-    wpp_msg = "Olá! Quero ver o diagnóstico completo do meu delivery."
-    wpp_url = f"https://wa.me/{wpp_numero}?text={wpp_msg.replace(' ', '%20')}"
-
-    st.markdown(f"""
-    <div class="lock-card">
-        <div class="lock-icon">🔒</div>
-        <div class="lock-title">{titulo}</div>
-        <div class="lock-sub">Disponível no diagnóstico completo. O que você vai ver:</div>
-        <ul class="lock-items">{itens_html}</ul>
-        <a href="{wpp_url}" class="wpp-btn" target="_blank">💬 Quero o diagnóstico completo</a>
-    </div>""", unsafe_allow_html=True)
 
 
 # ─────────────────────────────────────────────
@@ -656,6 +641,7 @@ def gerar_plano_automatico(df: pd.DataFrame, config: dict = None, cardapio: dict
     # 1. TICKET MÉDIO SEMANAL
     # ─────────────────────────────────────────────────────────────────────
     ticket_sem = ok.groupby("Semana")["Valor Bruto"].mean()
+    media_tk = std_tk = pico_tk = atual_tk = gap_tk = None
     if len(ticket_sem) >= 3:
         media_tk, std_tk, pico_tk, atual_tk, gap_tk = sigma_oportunidade(ticket_sem)
         pedidos_mes = ok.groupby("Semana").size().mean() * 4
@@ -683,6 +669,7 @@ def gerar_plano_automatico(df: pd.DataFrame, config: dict = None, cardapio: dict
     cancel_sem = df.groupby(df["Data do Pedido"].dt.to_period("W")).apply(
         lambda x: x["is_cancelado"].sum() / len(x) * 100
     )
+    media_ca = std_ca = atual_ca = meta_ca = gap_ca = None
     if len(cancel_sem) >= 3:
         media_ca, std_ca, _, atual_ca, _ = sigma_oportunidade(cancel_sem)
         # Aqui "gap" é inverso — queremos baixo cancelamento
@@ -716,6 +703,8 @@ def gerar_plano_automatico(df: pd.DataFrame, config: dict = None, cardapio: dict
     # ─────────────────────────────────────────────────────────────────────
     if "Tempo de Entrega (min)" in ok.columns:
         tempo_sem = ok.groupby("Semana")["Tempo de Entrega (min)"].mean()
+        media_te = std_te = atual_te = meta_te = gap_te = None
+        tempo_sem = pd.Series(dtype=float)
         if len(tempo_sem) >= 3:
             media_te, std_te, _, atual_te, _ = sigma_oportunidade(tempo_sem)
             meta_te = max(media_te - std_te, 20)
@@ -758,6 +747,9 @@ def gerar_plano_automatico(df: pd.DataFrame, config: dict = None, cardapio: dict
         ok2 = ok.merge(cli_recorrentes[["ID do Cliente","intervalo"]], on="ID do Cliente", how="inner")
         intervalo_sem = ok2.groupby("Semana")["intervalo"].median()
 
+        media_iv = std_iv = atual_iv = meta_iv = gap_iv = None
+        intervalo_sem = pd.Series(dtype=float)
+
         if len(intervalo_sem) >= 3:
             media_iv, std_iv, _, atual_iv, _ = sigma_oportunidade(intervalo_sem)
             meta_iv = max(media_iv - std_iv, 1)
@@ -792,6 +784,7 @@ def gerar_plano_automatico(df: pd.DataFrame, config: dict = None, cardapio: dict
     )
     total_cli = ok["ID do Cliente"].nunique()
 
+    media_at = std_at = pico_at = atual_at = gap_at = None
     if len(ativos_sem) >= 3:
         pct_ativos_sem = ativos_sem / total_cli * 100
         media_at, std_at, pico_at, atual_at, gap_at = sigma_oportunidade(pct_ativos_sem)
@@ -887,6 +880,41 @@ def gerar_plano_automatico(df: pd.DataFrame, config: dict = None, cardapio: dict
         "impacto_mensal_low":  max(impacto_total * 0.65, 0),
         "impacto_mensal_high": max(impacto_total * 1.10, 0),
         "n_problemas":         len(problemas),
+        # dados brutos para a página de experimentos
+        "metricas": {
+            "ticket_medio": {
+                "serie":  ticket_sem.to_dict()       if len(ticket_sem) >= 3 else {},
+                "atual":  atual_tk                   if len(ticket_sem) >= 3 else None,
+                "pico":   pico_tk                    if len(ticket_sem) >= 3 else None,
+                "media":  media_tk                   if len(ticket_sem) >= 3 else None,
+                "std":    std_tk                     if len(ticket_sem) >= 3 else None,
+            },
+            "cancelamento": {
+                "serie":  cancel_sem.to_dict()       if len(cancel_sem) >= 3 else {},
+                "atual":  atual_ca                   if len(cancel_sem) >= 3 else None,
+                "meta":   meta_ca                    if len(cancel_sem) >= 3 else None,
+                "media":  media_ca                   if len(cancel_sem) >= 3 else None,
+                "std":    std_ca                     if len(cancel_sem) >= 3 else None,
+            },
+            "tempo_entrega": {
+                "serie":  tempo_sem.to_dict()        if "Tempo de Entrega (min)" in ok.columns and len(tempo_sem) >= 3 else {},
+                "atual":  atual_te                   if "Tempo de Entrega (min)" in ok.columns and len(tempo_sem) >= 3 else None,
+                "meta":   meta_te                    if "Tempo de Entrega (min)" in ok.columns and len(tempo_sem) >= 3 else None,
+            },
+            "intervalo_compras": {
+                "serie":  intervalo_sem.to_dict()    if len(cli_recorrentes) >= 10 and len(intervalo_sem) >= 3 else {},
+                "atual":  atual_iv                   if len(cli_recorrentes) >= 10 and len(intervalo_sem) >= 3 else None,
+                "meta":   meta_iv                    if len(cli_recorrentes) >= 10 and len(intervalo_sem) >= 3 else None,
+            },
+            "clientes_ativos_pct": {
+                "serie":  pct_ativos_sem.to_dict()   if len(ativos_sem) >= 3 else {},
+                "atual":  atual_at                   if len(ativos_sem) >= 3 else None,
+                "pico":   pico_at                    if len(ativos_sem) >= 3 else None,
+            },
+            "produtos": {
+                it["item"]: it for it in itens_lista
+            },
+        }
     }
 
 
