@@ -222,7 +222,7 @@ fig_bubble.update_layout(
     xaxis=dict(
         showgrid=False, color="#50507a",
         tickmode="array",
-        tickvals=list(bubble["Hora"].unique()),
+        tickvals=sorted(bubble["Hora"].unique()),
         ticktext=[f"{h}h" for h in sorted(bubble["Hora"].unique())],
     ),
     yaxis=dict(
