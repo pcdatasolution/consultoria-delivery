@@ -84,7 +84,11 @@ st.markdown('<div class="section-header">📊 Números Gerais</div>', unsafe_all
 receita_total  = item_stats["receita"].sum()
 receita_liq    = item_stats["rec_liq"].sum()
 margem_media   = receita_liq / receita_total * 100 if receita_total else 0
-ticket_medio   = df_ok["Valor Bruto"].mean()
+ticket_medio = (
+    df_ok.groupby("ID do Pedido")["Valor Bruto"].sum().mean()
+    if "ID do Pedido" in df_ok.columns
+    else df_ok["Valor Bruto"].mean()
+)
 itens_p_pedido = df_ok.groupby("ID Pedido")["Nome do Item"].count().mean() if "ID Pedido" in df_ok.columns else df_ok["Nome do Item"].count() / len(df_ok)
 
 c1, c2, c3, c4 = st.columns(4)

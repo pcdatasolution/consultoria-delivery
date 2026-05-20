@@ -293,7 +293,7 @@ def render_sidebar(active: str = "home"):
         # ── NAVEGAÇÃO ────────────────────────────────────────────────
         st.markdown("""
         <div style="font-size:11px;font-weight:600;color:#7a90b0;
-          text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">
+          text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;text-align: center">
           Etapas
         </div>""", unsafe_allow_html=True)
 
@@ -301,6 +301,17 @@ def render_sidebar(active: str = "home"):
         st.page_link("pages/1_Operacao.py",      label="🚚  Operação")
         st.page_link("pages/2_Lucratividade.py", label="💰  Lucratividade")
         st.page_link("pages/3_Fidelizacao.py",   label="❤️  Fidelização")
+
+        st.markdown("""
+        <div style="height:1px;background:#e5e9f0;margin:14px auto 12px;"></div>
+        """, unsafe_allow_html=True)
+
+        st.markdown("""
+        <div style="font-size:11px;font-weight:600;color:#7a90b0;
+          text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;text-align: center">
+          Planejamento
+        </div>""", unsafe_allow_html=True)
+
 
         st.page_link("pages/4_Plano.py",     label="🧠  Plano de Crescimento")
         st.page_link("pages/5_Experimentos.py", label="⚗️  Experimentos")
@@ -528,14 +539,31 @@ def get_kpis(df: pd.DataFrame) -> dict:
     ok  = df[~df["is_cancelado"]]
     can = df[df["is_cancelado"]]
     fat = ok["Valor Bruto"].sum()
-    liq = ok["Receita Líquida"].sum()
+
+    # Suporta tanto "Taxa iFood" (Sheets) quanto "Comissão iFood" (CSV)
+    if "Taxa iFood" in df.columns:
+        comissao = ok["Taxa iFood"].sum()
+    elif "Comissão iFood" in df.columns:
+        comissao = ok["Comissão iFood"].sum()
+    else:
+        comissao = 0
+
+    liq = fat - comissao
+
+    # Ticket médio por pedido (não por linha/item)
+    ticket = (
+        ok.groupby("ID Pedido")["Valor Bruto"].sum().mean()
+        if "ID Pedido" in ok.columns and len(ok) else
+        (ok["Valor Bruto"].mean() if len(ok) else 0)
+    )
+
     return {
         "faturamento":         fat,
         "receita_liquida":     liq,
-        "ticket_medio":        ok["Valor Bruto"].mean() if len(ok) else 0,
-        "total_pedidos":       len(ok),
+        "ticket_medio":        ticket,
+        "total_pedidos":       ok["ID Pedido"].nunique() if "ID Pedido" in ok.columns else len(ok),
         "taxa_cancelamento":   len(can) / len(df) * 100 if len(df) else 0,
-        "comissao_total":      ok["Comissão iFood"].sum(),
+        "comissao_total":      comissao,
         "perda_cancelamentos": can["Valor Bruto"].sum(),
     }
 
@@ -628,22 +656,36 @@ def gerar_plano_automatico(df: pd.DataFrame, config: dict = None, cardapio: dict
     problemas = []
 
     # ── helper σ ─────────────────────────────────────────────────────────
-    def sigma_oportunidade(serie: pd.Series):
-        """Retorna (media, std, pico, atual, gap)"""
+    def sigma_oportunidade(serie: pd.Series, atual_real=None):
+        """Retorna (media, std, pico, atual, gap)
+        atual_real: valor calculado do período completo (preferido sobre iloc[-1])
+        """
         media = serie.mean()
         std   = serie.std() if len(serie) > 1 else 0
-        pico  = media + std          # média + 1σ
-        atual = serie.iloc[-1]       # semana mais recente
+        pico  = media + std
+        atual = atual_real if atual_real is not None else serie.iloc[-1]
         gap   = max(pico - atual, 0)
         return media, std, pico, atual, gap
 
     # ─────────────────────────────────────────────────────────────────────
     # 1. TICKET MÉDIO SEMANAL
     # ─────────────────────────────────────────────────────────────────────
-    ticket_sem = ok.groupby("Semana")["Valor Bruto"].mean()
-    media_tk = std_tk = pico_tk = atual_tk = gap_tk = None
+    ticket_sem = (
+        ok.groupby(["Semana", "ID do Pedido"])["Valor Bruto"].sum()
+        .reset_index()
+        .groupby("Semana")["Valor Bruto"].mean()
+        if "ID do Pedido" in ok.columns
+        else ok.groupby("Semana")["Valor Bruto"].mean()
+    )
+    # atual_real = ticket médio do período completo
+    ticket_atual_real = (
+        ok.groupby("ID do Pedido")["Valor Bruto"].sum().mean()
+        if "ID do Pedido" in ok.columns
+        else ok["Valor Bruto"].mean()
+    )
+
     if len(ticket_sem) >= 3:
-        media_tk, std_tk, pico_tk, atual_tk, gap_tk = sigma_oportunidade(ticket_sem)
+        media_tk, std_tk, pico_tk, atual_tk, gap_tk = sigma_oportunidade(serie=ticket_sem, atual_real=ticket_atual_real)
         pedidos_mes = ok.groupby("Semana").size().mean() * 4
         impacto_tk  = gap_tk * pedidos_mes
 
@@ -670,8 +712,9 @@ def gerar_plano_automatico(df: pd.DataFrame, config: dict = None, cardapio: dict
         lambda x: x["is_cancelado"].sum() / len(x) * 100
     )
     media_ca = std_ca = atual_ca = meta_ca = gap_ca = None
+    cancel_atual_real = df["is_cancelado"].sum() / len(df) * 100 if len(df) else 0
     if len(cancel_sem) >= 3:
-        media_ca, std_ca, _, atual_ca, _ = sigma_oportunidade(cancel_sem)
+        media_ca, std_ca, _, atual_ca, _ = sigma_oportunidade(cancel_sem, atual_real=cancel_atual_real)
         # Aqui "gap" é inverso — queremos baixo cancelamento
         # pico ruim = média + 1σ; bom = média - 1σ
         meta_ca  = max(media_ca - std_ca, 0)
@@ -705,8 +748,9 @@ def gerar_plano_automatico(df: pd.DataFrame, config: dict = None, cardapio: dict
         tempo_sem = ok.groupby("Semana")["Tempo de Entrega (min)"].mean()
         media_te = std_te = atual_te = meta_te = gap_te = None
         tempo_sem = pd.Series(dtype=float)
+        tempo_atual_real = ok["Tempo de Entrega (min)"].mean()
         if len(tempo_sem) >= 3:
-            media_te, std_te, _, atual_te, _ = sigma_oportunidade(tempo_sem)
+            media_te, std_te, _, atual_te, _ = sigma_oportunidade(tempo_sem, atual_real=tempo_atual_real)
             meta_te = max(media_te - std_te, 20)
             gap_te  = max(atual_te - meta_te, 0)
 
@@ -750,8 +794,9 @@ def gerar_plano_automatico(df: pd.DataFrame, config: dict = None, cardapio: dict
         media_iv = std_iv = atual_iv = meta_iv = gap_iv = None
         intervalo_sem = pd.Series(dtype=float)
 
+        intervalo_atual_real = cli_recorrentes["intervalo"].median() if len(cli_recorrentes) > 0 else None
         if len(intervalo_sem) >= 3:
-            media_iv, std_iv, _, atual_iv, _ = sigma_oportunidade(intervalo_sem)
+            media_iv, std_iv, _, atual_iv, _ = sigma_oportunidade(intervalo_sem, atual_real=intervalo_atual_real)
             meta_iv = max(media_iv - std_iv, 1)
             gap_iv  = max(atual_iv - meta_iv, 0)
 
@@ -783,16 +828,24 @@ def gerar_plano_automatico(df: pd.DataFrame, config: dict = None, cardapio: dict
         lambda x: x["ID do Cliente"].nunique()
     )
     total_cli = ok["ID do Cliente"].nunique()
-
+    pct_ativos_sem = ativos_sem / total_cli * 100
     media_at = std_at = pico_at = atual_at = gap_at = None
+    hoje_real = ok["Data do Pedido"].max()
+    cli_todos = ok.groupby("ID do Cliente")["Data do Pedido"].max().reset_index()
+    cli_todos["dias"] = (hoje_real - cli_todos["Data do Pedido"]).dt.days
+    ativos_atual_real = (cli_todos["dias"] <= dias_churn).sum() / len(cli_todos) * 100 if len(cli_todos) else 0
+
     if len(ativos_sem) >= 3:
-        pct_ativos_sem = ativos_sem / total_cli * 100
-        media_at, std_at, pico_at, atual_at, gap_at = sigma_oportunidade(pct_ativos_sem)
+        media_at, std_at, pico_at, atual_at, gap_at = sigma_oportunidade(pct_ativos_sem, atual_real=ativos_atual_real)
 
         if gap_at > 2:
-            cli_gap      = round(total_cli * gap_at / 100, 0)
-            ticket_med   = ok["Valor Bruto"].mean()
-            impacto_at   = cli_gap * ticket_med * fator
+            cli_gap    = round(total_cli * gap_at / 100, 0)
+            ticket_med = (
+                ok.groupby("ID do Pedido")["Valor Bruto"].sum().mean()
+                if "ID do Pedido" in ok.columns
+                else ok["Valor Bruto"].mean()
+            )
+            impacto_at = cli_gap * ticket_med * fator
 
             problemas.append({
                 "categoria":  "❤️ Fidelização",
@@ -822,7 +875,10 @@ def gerar_plano_automatico(df: pd.DataFrame, config: dict = None, cardapio: dict
             continue
 
         serie = grp.set_index("Semana")["vendas"]
-        media_it, std_it, pico_it, atual_it, gap_it = sigma_oportunidade(serie)
+        # atual_real = volume médio semanal do período completo (total / semanas)
+        total_vendas_item = ok[ok["Nome do Item"] == item].shape[0]
+        atual_real_it     = total_vendas_item / n_semanas
+        media_it, std_it, pico_it, atual_it, gap_it = sigma_oportunidade(serie, atual_real=atual_real_it)
 
         if gap_it < 1:
             continue
@@ -833,9 +889,14 @@ def gerar_plano_automatico(df: pd.DataFrame, config: dict = None, cardapio: dict
             ticket_it  = cardapio[item]["preco"]
             tem_real   = True
         else:
-            margem_r   = margem_proxy
-            ticket_it  = ok[ok["Nome do Item"] == item]["Valor Bruto"].mean()
-            tem_real   = False
+            margem_r  = margem_proxy
+            ticket_it = (
+                ok[ok["Nome do Item"] == item]
+                .groupby("ID do Pedido")["Valor Bruto"].sum().mean()
+                if "ID do Pedido" in ok.columns
+                else ok[ok["Nome do Item"] == item]["Valor Bruto"].mean()
+            )
+            tem_real  = False
 
         margem_R   = ticket_it * margem_r          # margem em R$ por unidade
         impacto_it = gap_it * margem_R * 4         # gap semanal × 4 semanas
@@ -1048,7 +1109,13 @@ def carregar_pedidos_sheets(sheets_id: str) -> pd.DataFrame | None:
     try:
         gc       = gspread.service_account(filename="credentials.json")
         planilha = gc.open_by_key(sheets_id)
-        df       = pd.DataFrame(planilha.worksheet("pedidos").get_all_records())
+        rows     = planilha.worksheet("pedidos").get_all_values()
+        headers  = rows[0]
+        # Remove colunas sem cabeçalho
+        cols_validas = [i for i, h in enumerate(headers) if h.strip() != ""]
+        headers  = [headers[i] for i in cols_validas]
+        data     = [[row[i] for i in cols_validas] for row in rows[1:]]
+        df       = pd.DataFrame(data, columns=headers)
     except Exception as e:
         st.error(f"Erro ao ler aba 'pedidos': {e}")
         return None
@@ -1057,11 +1124,47 @@ def carregar_pedidos_sheets(sheets_id: str) -> pd.DataFrame | None:
         return None
 
     # Garantir tipos corretos
-    df["Data do Pedido"]        = pd.to_datetime(df["Data do Pedido"], dayfirst=True, errors="coerce")
-    df["Valor Bruto"]           = df["Valor Bruto"].apply(_limpar_valor_monetario)
-    df["Taxa iFood"]            = df["Taxa iFood"].apply(_limpar_valor_monetario)
-    df["Tempo de Entrega (min)"]= pd.to_numeric(df["Tempo de Entrega (min)"], errors="coerce").fillna(0)
-    df["is_cancelado"]          = df["is_cancelado"].astype(str).str.strip().str.lower().isin(["true", "1", "sim", "s"])
-    df["Dia Semana"]            = df["Data do Pedido"].dt.day_name()
+    # Combina data + hora se existirem separados, senão usa só a data
+    if "Hora" in df.columns:
+        df["Data do Pedido"] = pd.to_datetime(
+            df["Data do Pedido"].astype(str) + " " + df["Hora"].astype(str),
+            dayfirst=True, errors="coerce"
+        )
+    else:
+        df["Data do Pedido"] = pd.to_datetime(df["Data do Pedido"], dayfirst=True, errors="coerce")
+    df["Hora"] = df["Data do Pedido"].dt.hour
+    df["Valor Bruto"]            = df["Valor Bruto"].apply(_limpar_valor_monetario)
+    df["Valor dos Itens"]        = df["Valor dos Itens"].apply(_limpar_valor_monetario)
+    df["Comissão iFood"]         = df["Comissão iFood"].apply(_limpar_valor_monetario)
+    df["Taxa de Entrega"]        = df["Taxa de Entrega"].apply(_limpar_valor_monetario)
+    df["Tempo de Entrega (min)"] = pd.to_numeric(df["Tempo de Entrega (min)"], errors="coerce").fillna(0)
+    df["Distância (km)"]         = pd.to_numeric(df["Distância (km)"], errors="coerce").fillna(0)
+    df["lat"]                    = pd.to_numeric(df["lat"], errors="coerce")
+    df["lon"]                    = pd.to_numeric(df["lon"], errors="coerce")
+
+    # Agregar para 1 linha por pedido (mesmo formato do mock)
+    df = (
+        df.groupby("ID do Pedido", as_index=False)
+        .agg(
+            **{
+                "Data do Pedido":         ("Data do Pedido",         "first"),
+                "ID do Cliente":          ("ID do Cliente",          "first"),
+                "Status":                 ("Status",                 "first"),
+                "Nome do Item":           ("Nome do Item",           "first"),
+                "Valor Bruto":            ("Valor Bruto",            "sum"),
+                "Valor dos Itens":        ("Valor dos Itens",        "sum"),
+                "Comissão iFood":         ("Comissão iFood",         "sum"),
+                "Tempo de Entrega (min)": ("Tempo de Entrega (min)", "first"),
+                "Taxa de Entrega":        ("Taxa de Entrega",        "first"),
+                "Bairro":                 ("Bairro",                 "first"),
+                "Distância (km)":         ("Distância (km)",         "first"),
+                "lat":                    ("lat",                    "first"),
+                "lon":                    ("lon",                    "first"),
+                "Hora":                   ("Hora",                   "first"),
+            }
+        )
+    )
+    df["is_cancelado"] = df["Status"].str.strip().str.lower().str.contains("cancel").fillna(False)
+    df["Dia Semana"]   = df["Data do Pedido"].dt.day_name()
 
     return df
