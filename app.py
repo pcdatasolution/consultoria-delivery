@@ -27,20 +27,20 @@ render_sidebar(active="home")
 acesso = detectar_modo()
 
 # ── Carregar / inicializar dados ──────────────────────────────────────────────
-if "df_main" not in st.session_state:
-    sheets_id = acesso.get("sheets_id")
-    df_sheets = carregar_pedidos_sheets(sheets_id) if sheets_id else None
-
-    if df_sheets is not None:
-        st.session_state["df_main"] = df_sheets
-        st.session_state["is_mock"] = False
-        dados_cliente = carregar_dados_cliente(sheets_id)
-        st.session_state["config"]   = dados_cliente.get("config", {})
-        st.session_state["cardapio"] = dados_cliente.get("cardapio", {})
-    else:
-        st.session_state["df_main"] = process_ifood_data(generate_mock_ifood_data(800))
-        st.session_state["is_mock"] = True
-        st.session_state["config"] = {}
+sheets_id = acesso.get("sheets_id")
+if sheets_id:
+    df_sheets = carregar_pedidos_sheets(sheets_id)
+    dados_cliente = carregar_dados_cliente(sheets_id)
+    st.session_state["df_main"]  = df_sheets if df_sheets is not None else process_ifood_data(generate_mock_ifood_data(800))
+    st.session_state["is_mock"]  = df_sheets is None
+    st.session_state["config"]   = dados_cliente.get("config", {})
+    st.session_state["cardapio"] = dados_cliente.get("cardapio", {})
+    st.session_state["sheets_id_carregado"] = sheets_id
+elif not sheets_id and "df_main" not in st.session_state:
+    st.session_state["df_main"] = process_ifood_data(generate_mock_ifood_data(800))
+    st.session_state["is_mock"] = True
+    st.session_state["config"]  = {}
+    st.session_state["cardapio"] = {}
 
 config   = st.session_state.get("config", {})
 cardapio = st.session_state.get("cardapio", {})
@@ -70,7 +70,7 @@ st.markdown("""
 perda_low_fmt  = f"R$ {plano['impacto_mensal_low']:,.0f}".replace(",", ".")
 perda_high_fmt = f"R$ {plano['impacto_mensal_high']:,.0f}".replace(",", ".")
 n_itens   = choque["n_itens_problema"]
-pct_churn = choque["pct_churn"]
+pct_churn = choque["pct_churn"] 
 
 st.markdown(f"""
 <div class="choque-grid">

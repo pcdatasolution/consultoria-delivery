@@ -40,3 +40,4 @@ credentials.json
 
 # Testes
 test_sheets.py
+seed_test_data.py

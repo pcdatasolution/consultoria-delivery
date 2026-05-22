@@ -12,6 +12,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from utils import (
     generate_mock_ifood_data, process_ifood_data,
     gerar_plano_automatico, detectar_modo, inject_css, render_sidebar,
+    salvar_experimento_sheets, encerrar_experimento_sheets,
+    carregar_experimento_ativo_sheets,
 )
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -25,9 +27,23 @@ st.set_page_config(
 inject_css()
 render_sidebar(active="experimentos")
 acesso = detectar_modo()
+sheets_id = acesso.get("sheets_id")
+
+if "experimento_ativo" not in st.session_state and sheets_id:
+    exp_recuperado = carregar_experimento_ativo_sheets(sheets_id)
+    if exp_recuperado:
+        st.session_state["experimento_ativo"] = exp_recuperado
 
 # ── Dados ─────────────────────────────────────────────────────────────────────
-if "df_main" not in st.session_state:
+if sheets_id and st.session_state.get("sheets_id_carregado") != sheets_id:
+    from utils import carregar_pedidos_sheets, carregar_dados_cliente
+    df_raw = carregar_pedidos_sheets(sheets_id)
+    dados  = carregar_dados_cliente(sheets_id)
+    st.session_state["df_main"]  = df_raw if df_raw is not None else process_ifood_data(generate_mock_ifood_data(800))
+    st.session_state["config"]   = dados.get("config", {})
+    st.session_state["cardapio"] = dados.get("cardapio", {})
+    st.session_state["sheets_id_carregado"] = sheets_id
+elif not sheets_id and "df_main" not in st.session_state:
     st.session_state["df_main"]  = process_ifood_data(generate_mock_ifood_data(800))
     st.session_state["config"]   = {}
     st.session_state["cardapio"] = {}
@@ -281,7 +297,9 @@ if exp_ativo is None:
         # Botão iniciar
         st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
         if st.button("🚀 Iniciar Experimento", type="primary", use_container_width=False):
-            st.session_state["experimento_ativo"] = {
+            import uuid
+            novo_exp = {
+                "id":             str(uuid.uuid4())[:8],
                 "problema":       prob,
                 "tipo_acao":      tipo_acao,
                 "chave_primaria": chave_primaria,
@@ -294,6 +312,10 @@ if exp_ativo is None:
                 "impacto":        impacto,
                 "raciocinio":     prob["raciocinio"],
             }
+            st.session_state["experimento_ativo"] = novo_exp
+            st.write(f"DEBUG sheets_id no botão: {sheets_id}")
+            if sheets_id:
+                salvar_experimento_sheets(sheets_id, novo_exp)
             st.rerun()
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -302,11 +324,18 @@ if exp_ativo is None:
 else:
     exp        = exp_ativo
     data_ini   = exp["data_inicio"]
-    dias_exp   = (pd.Timestamp.now() - data_ini).days
     df_pos     = df[df["Data do Pedido"] >= data_ini].copy()
+    ok_pos     = df_pos[~df_pos["is_cancelado"]]
+
+    # dias reais com dados (não relógio)
+    if len(df_pos) > 0:
+        dias_exp = (df_pos["Data do Pedido"].max() - df_pos["Data do Pedido"].min()).days
+        dias_exp = max(dias_exp, 1)
+    else:
+        dias_exp = 1
+
     chave_p    = exp["chave_primaria"]
     item_exp   = exp.get("item")
-
     metrica_pos = calcular_metrica_pos(chave_p, df_pos, item_exp)
 
     st.markdown(f"""
@@ -324,23 +353,145 @@ else:
     </div>
     """, unsafe_allow_html=True)
 
-    # Potencial
-    st.markdown(f"""
-    <div style="background:linear-gradient(135deg,#100a20,#0a1810);
-      border:1px solid #221840;border-radius:16px;padding:28px 32px;margin-bottom:20px;">
-      <div style="font-size:11px;color:#a78bfa;font-weight:600;
-        text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">
-        💸 Potencial de Ganho
-      </div>
-      <div style="font-family:'Syne',sans-serif;font-size:36px;
-        font-weight:800;color:#f59e0b;">
-        R$ {exp['impacto']:,.0f}
-      </div>
-      <div style="font-size:12px;color:#606078;margin-top:8px;line-height:1.6;">
-        {exp['raciocinio']}
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
+    # ── Calcula ganho realizado direto do df_pos ──────────────────────────
+    ganho_periodo   = None
+    ganho_mensal    = None
+    raciocinio_real = ""
+
+    try:
+        if len(ok_pos) > 0 and dias_exp > 0:
+            chave_p_calc = exp["chave_primaria"]
+
+            # baseline numérico
+            val_base = float(
+                exp["baseline_atual"].replace("R$","").replace("%","")
+                .replace(" min","").replace(" dias","")
+                .replace(" pedidos","").replace(",",".").strip()
+            )
+
+            if chave_p_calc == "ticket_medio":
+                ticket_pos  = ok_pos.groupby("ID do Pedido")["Valor Bruto"].sum()
+                ticket_med  = ticket_pos.mean()
+                delta_tk    = ticket_med - val_base
+                if delta_tk > 0:
+                    n_pedidos_pos   = len(ticket_pos)
+                    ganho_periodo   = delta_tk * n_pedidos_pos
+                    pedidos_mes     = n_pedidos_pos / dias_exp * 30
+                    ganho_mensal    = delta_tk * pedidos_mes
+                    raciocinio_real = (
+                        f"Ticket subiu R$ {delta_tk:.2f} (de R$ {val_base:.2f} → R$ {ticket_med:.2f}) "
+                        f"× {n_pedidos_pos} pedidos no período = R$ {ganho_periodo:.0f} acumulado. "
+                        f"Projeção: R$ {ganho_mensal:.0f}/mês."
+                    )
+
+            elif chave_p_calc == "cancelamento":
+                cancel_pos  = df_pos["is_cancelado"].sum() / len(df_pos) * 100
+                delta_ca    = val_base - cancel_pos          # positivo = melhorou
+                if delta_ca > 0:
+                    ticket_med      = ok_pos.groupby("ID do Pedido")["Valor Bruto"].sum().mean()
+                    pedidos_evit    = len(df_pos) * (delta_ca / 100)
+                    ganho_periodo   = pedidos_evit * ticket_med
+                    pedidos_mes     = len(df_pos) / dias_exp * 30
+                    ganho_mensal    = pedidos_mes * (delta_ca / 100) * ticket_med
+                    raciocinio_real = (
+                        f"Cancelamento caiu {delta_ca:.1f}pp (de {val_base:.1f}% → {cancel_pos:.1f}%) "
+                        f"× {pedidos_evit:.0f} pedidos evitados × R$ {ticket_med:.0f} ticket "
+                        f"= R$ {ganho_periodo:.0f} no período. Projeção: R$ {ganho_mensal:.0f}/mês."
+                    )
+
+            elif chave_p_calc == "clientes_ativos_pct":
+                dias_churn_cfg = int(config.get("churn", 30))
+                hoje_pos       = ok_pos["Data do Pedido"].max()
+                cli_pos        = ok_pos.groupby("ID do Cliente")["Data do Pedido"].max().reset_index()
+                cli_pos["dias_sem_compra"] = (hoje_pos - cli_pos["Data do Pedido"]).dt.days
+                pct_ativos_pos = (cli_pos["dias_sem_compra"] <= dias_churn_cfg).sum() / len(cli_pos) * 100
+                delta_at       = pct_ativos_pos - val_base   # positivo = melhorou
+                if delta_at > 0:
+                    ticket_med      = ok_pos.groupby("ID do Pedido")["Valor Bruto"].sum().mean()
+                    clientes_extras = len(cli_pos) * (delta_at / 100)
+                    ganho_periodo   = clientes_extras * ticket_med
+                    ganho_mensal    = ganho_periodo / dias_exp * 30
+                    raciocinio_real = (
+                        f"Base ativa subiu {delta_at:.1f}pp (de {val_base:.1f}% → {pct_ativos_pos:.1f}%) "
+                        f"= ~{clientes_extras:.0f} clientes reativados × R$ {ticket_med:.0f} ticket "
+                        f"= R$ {ganho_periodo:.0f} no período. Projeção: R$ {ganho_mensal:.0f}/mês."
+                    )
+
+            elif chave_p_calc == "produtos" and item_exp:
+                vol_pos       = ok_pos[ok_pos["Nome do Item"] == item_exp].shape[0]
+                vol_base      = val_base   # baseline em pedidos
+                delta_vol     = vol_pos - vol_base
+                if delta_vol > 0:
+                    dados_item    = metricas.get("produtos", {}).get(item_exp, {})
+                    margem_r      = dados_item.get("margem_r", 0)
+                    ganho_periodo = delta_vol * margem_r
+                    ganho_mensal  = (vol_pos / dias_exp * 30 - vol_base * 4) * margem_r
+                    raciocinio_real = (
+                        f"{item_exp}: {delta_vol:.0f} pedidos a mais no período "
+                        f"× R$ {margem_r:.2f} margem = R$ {ganho_periodo:.0f} acumulado. "
+                        f"Projeção: R$ {max(ganho_mensal,0):.0f}/mês."
+                    )
+    except Exception:
+        pass
+
+    # ── Renderiza cards ───────────────────────────────────────────────────
+    if ganho_periodo and ganho_periodo > 0:
+        col_pot, col_gan = st.columns(2)
+        with col_pot:
+            st.markdown(f"""
+            <div style="background:linear-gradient(135deg,#100a20,#0a1810);
+              border:1px solid #221840;border-radius:16px;padding:28px 32px;margin-bottom:20px;">
+              <div style="font-size:11px;color:#a78bfa;font-weight:600;
+                text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">
+                💸 Potencial de Ganho
+              </div>
+              <div style="font-family:'Syne',sans-serif;font-size:36px;
+                font-weight:800;color:#f59e0b;">
+                R$ {exp['impacto']:,.0f}
+              </div>
+              <div style="font-size:12px;color:#606078;margin-top:8px;line-height:1.6;">
+                {exp['raciocinio']}
+              </div>
+            </div>
+            """, unsafe_allow_html=True)
+        with col_gan:
+            pct_capturado = min(ganho_periodo / exp['impacto'] * 100, 999) if exp['impacto'] > 0 else 0
+            st.markdown(f"""
+            <div style="background:linear-gradient(135deg,#0a1f10,#0d1a0a);
+              border:1px solid #1a3a20;border-radius:16px;padding:28px 32px;margin-bottom:20px;">
+              <div style="font-size:11px;color:#4ade80;font-weight:600;
+                text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">
+                ✅ Ganho Realizado — {dias_exp} dia(s)
+              </div>
+              <div style="font-family:'Syne',sans-serif;font-size:36px;
+                font-weight:800;color:#4ade80;">
+                R$ {ganho_periodo:,.0f}
+              </div>
+              <div style="font-size:13px;color:#86efac;margin-top:6px;font-weight:600;">
+                Projeção mensal: R$ {ganho_mensal:,.0f} &nbsp;·&nbsp; {pct_capturado:.0f}% do potencial
+              </div>
+              <div style="font-size:12px;color:#2d5a35;margin-top:8px;line-height:1.6;">
+                {raciocinio_real}
+              </div>
+            </div>
+            """, unsafe_allow_html=True)
+    else:
+        st.markdown(f"""
+        <div style="background:linear-gradient(135deg,#100a20,#0a1810);
+          border:1px solid #221840;border-radius:16px;padding:28px 32px;margin-bottom:20px;">
+          <div style="font-size:11px;color:#a78bfa;font-weight:600;
+            text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">
+            💸 Potencial de Ganho
+          </div>
+          <div style="font-family:'Syne',sans-serif;font-size:36px;
+            font-weight:800;color:#f59e0b;">
+            R$ {exp['impacto']:,.0f}
+          </div>
+          <div style="font-size:12px;color:#606078;margin-top:8px;line-height:1.6;">
+            {exp['raciocinio']}
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
 
     # Painel principal
     st.markdown(f"""
@@ -406,5 +557,7 @@ else:
     col_enc, _ = st.columns([1, 3])
     with col_enc:
         if st.button("🏁 Encerrar Experimento", type="secondary", use_container_width=True):
+            if sheets_id:
+                encerrar_experimento_sheets(sheets_id)
             st.session_state["experimento_ativo"] = None
             st.rerun()

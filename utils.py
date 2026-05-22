@@ -638,6 +638,7 @@ def gerar_plano_automatico(df: pd.DataFrame, config: dict = None, cardapio: dict
         config = {}
     if cardapio is None:
         cardapio = {}
+    
 
     ok          = df[~df["is_cancelado"]].copy()
     dias_churn  = int(config.get("churn", 30))
@@ -654,6 +655,7 @@ def gerar_plano_automatico(df: pd.DataFrame, config: dict = None, cardapio: dict
     ok["Semana"] = ok["Data do Pedido"].dt.to_period("W")
 
     problemas = []
+
 
     # ── helper σ ─────────────────────────────────────────────────────────
     def sigma_oportunidade(serie: pd.Series, atual_real=None):
@@ -885,17 +887,12 @@ def gerar_plano_automatico(df: pd.DataFrame, config: dict = None, cardapio: dict
 
         # Margem: real do cardápio ou proxy
         if item in cardapio:
-            margem_r   = cardapio[item]["margem"]
-            ticket_it  = cardapio[item]["preco"]
-            tem_real   = True
+            margem_r  = cardapio[item]["margem"]
+            ticket_it = cardapio[item]["preco"]
+            tem_real  = True
         else:
             margem_r  = margem_proxy
-            ticket_it = (
-                ok[ok["Nome do Item"] == item]
-                .groupby("ID do Pedido")["Valor Bruto"].sum().mean()
-                if "ID do Pedido" in ok.columns
-                else ok[ok["Nome do Item"] == item]["Valor Bruto"].mean()
-            )
+            ticket_it = ok[ok["Nome do Item"] == item]["Valor Bruto"].mean()
             tem_real  = False
 
         margem_R   = ticket_it * margem_r          # margem em R$ por unidade
@@ -928,6 +925,8 @@ def gerar_plano_automatico(df: pd.DataFrame, config: dict = None, cardapio: dict
             ],
             "prioridade": 1 if it["impacto"] > 300 else 2,
         })
+        
+
 
     # ─────────────────────────────────────────────────────────────────────
     # Ranking final
@@ -987,13 +986,14 @@ def _limpar_valor_monetario(val) -> float:
     """Remove R$, pontos e vírgulas e converte para float."""
     if pd.isna(val) or str(val).strip() == "":
         return 0.0
-    return float(
-        str(val)
-        .replace("R$", "")
-        .replace(".", "")
-        .replace(",", ".")
-        .strip()
-    )
+    s = str(val).replace("R$", "").replace(" ", "").strip()
+    # Formato brasileiro: 1.234,56 → tem vírgula como decimal
+    if "," in s and "." in s:
+        s = s.replace(".", "").replace(",", ".")
+    elif "," in s:
+        s = s.replace(",", ".")
+    # Formato americano: 32.00 → já está correto, não mexe
+    return float(s)
 
 
 def _limpar_float(val) -> float:
@@ -1063,36 +1063,168 @@ def carregar_dados_cliente(sheets_id: str) -> dict:
         resultado["cardapio_df"] = pd.DataFrame()
         st.warning(f"Aba 'cardapio' com erro: {e}")
 
-    # ── 3. Intervenções ──────────────────────────────────────────────────
-    try:
-        df_int = pd.DataFrame(planilha.worksheet("intervencoes").get_all_records())
-        df_int["data"] = pd.to_datetime(df_int["data"], dayfirst=True, errors="coerce")
-        df_int["id"]   = pd.to_numeric(df_int["id"], errors="coerce")
-        resultado["intervencoes"] = df_int
-    except Exception as e:
-        resultado["intervencoes"] = pd.DataFrame()
-        st.warning(f"Aba 'intervencoes' com erro: {e}")
-
-    # ── 4. Ganhos ────────────────────────────────────────────────────────
-    try:
-        df_gan = pd.DataFrame(planilha.worksheet("ganhos").get_all_records())
-        df_gan["valor"]          = df_gan["valor"].apply(_limpar_valor_monetario)
-        df_gan["intervencao_id"] = pd.to_numeric(df_gan["intervencao_id"], errors="coerce")
-        resultado["ganhos"] = df_gan
-    except Exception as e:
-        resultado["ganhos"] = pd.DataFrame()
-        st.warning(f"Aba 'ganhos' com erro: {e}")
-
-    # ── 5. Notas ─────────────────────────────────────────────────────────
-    try:
-        df_not = pd.DataFrame(planilha.worksheet("notas").get_all_records())
-        df_not["data"] = pd.to_datetime(df_not["data"], dayfirst=True, errors="coerce")
-        resultado["notas"] = df_not
-    except Exception as e:
-        resultado["notas"] = pd.DataFrame()
-        st.warning(f"Aba 'notas' com erro: {e}")
 
     return resultado
+
+
+# ─────────────────────────────────────────────
+#  GOOGLE SHEETS — experimentos
+# ─────────────────────────────────────────────
+
+def salvar_experimento_sheets(sheets_id: str, exp: dict) -> bool:
+    """
+    Grava (ou atualiza) o experimento ativo na aba 'experimentos' do Sheets.
+    Procura por uma linha com status='ativo' e sobrescreve; se não existir, append.
+    Retorna True em sucesso.
+    """
+    try:
+        import gspread, json
+    except ImportError:
+        st.warning("gspread não instalado.")
+        return False
+
+    try:
+        gc       = gspread.service_account(filename="credentials.json")
+        planilha = gc.open_by_key(sheets_id)
+        ws       = planilha.worksheet("experimentos")
+    except Exception as e:
+        st.error(f"Erro ao conectar ao Sheets: {e}")
+        return False
+
+    # Monta o payload — serializa campos complexos como JSON
+    def _ser(v):
+        if isinstance(v, pd.Timestamp):
+            return v.strftime("%Y-%m-%d %H:%M:%S")
+        if isinstance(v, dict) or isinstance(v, list):
+            return json.dumps(v, ensure_ascii=False)
+        return str(v) if v is not None else ""
+
+    nova_linha = [
+        exp.get("id", ""),                          # id
+        exp.get("tipo_acao", ""),                   # acao
+        exp.get("item", "") or "",                  # item
+        exp.get("baseline_atual", ""),              # parametro_antes
+        exp.get("baseline_alvo", ""),               # parametro_depois
+        _ser(exp.get("data_inicio")),               # data_inicio
+        "",                                         # data_fim
+        "ativo",                                    # status
+        "",                                         # baseline_volume  (reservado)
+        "",                                         # baseline_margem  (reservado)
+        _ser(exp.get("problema", {})),              # conclusao → reutilizamos para guardar o blob do problema
+        exp.get("chave_primaria", ""),              # coluna extra: chave_primaria
+        exp.get("label_primaria", ""),              # coluna extra: label_primaria
+        _ser(exp.get("guardrails", [])),            # coluna extra: guardrails
+        str(exp.get("impacto", "")),                # coluna extra: impacto
+        exp.get("raciocinio", ""),                  # coluna extra: raciocinio
+    ]
+
+    try:
+        todas = ws.get_all_values()
+        headers = todas[0] if todas else []
+        # Procura linha ativa existente para sobrescrever
+        for i, row in enumerate(todas[1:], start=2):
+            status_col = 7  # índice 0-based = coluna H = índice 7
+            if len(row) > status_col and row[status_col].strip().lower() == "ativo":
+                # Atualiza a linha inteira
+                ws.update(f"A{i}:{chr(64+len(nova_linha))}{i}", [nova_linha])
+                return True
+        # Não encontrou → append
+        ws.append_row(nova_linha, value_input_option="RAW")
+        return True
+    except Exception as e:
+        st.error(f"Erro ao salvar experimento: {e}")
+        return False
+
+
+def encerrar_experimento_sheets(sheets_id: str) -> bool:
+    """
+    Marca a linha com status='ativo' como 'encerrado' e preenche data_fim.
+    """
+    try:
+        import gspread
+    except ImportError:
+        return False
+
+    try:
+        gc       = gspread.service_account(filename="credentials.json")
+        planilha = gc.open_by_key(sheets_id)
+        ws       = planilha.worksheet("experimentos")
+        todas    = ws.get_all_values()
+    except Exception as e:
+        st.error(f"Erro ao conectar ao Sheets: {e}")
+        return False
+
+    for i, row in enumerate(todas[1:], start=2):
+        if len(row) > 7 and row[7].strip().lower() == "ativo":
+            ws.update(f"G{i}", [[pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")]])  # data_fim
+            ws.update(f"H{i}", [["encerrado"]])                                        # status
+            return True
+    return False
+
+
+def carregar_experimento_ativo_sheets(sheets_id: str) -> dict | None:
+    """
+    Lê a aba 'experimentos' e retorna o dict do experimento com status='ativo',
+    no mesmo formato que session_state['experimento_ativo']. Retorna None se não houver.
+    """
+    try:
+        import gspread, json
+    except ImportError:
+        return None
+
+    try:
+        gc       = gspread.service_account(filename="credentials.json")
+        planilha = gc.open_by_key(sheets_id)
+        ws       = planilha.worksheet("experimentos")
+        todas    = ws.get_all_values()
+    except Exception:
+        return None
+
+    if len(todas) < 2:
+        return None
+
+    for row in todas[1:]:
+        # Garante tamanho mínimo
+        while len(row) < 16:
+            row.append("")
+
+        status = row[7].strip().lower()
+        if status != "ativo":
+            continue
+
+        # Desserializa o blob do problema
+        try:
+            problema = json.loads(row[10]) if row[10] else {}
+        except Exception:
+            problema = {}
+
+        try:
+            guardrails = json.loads(row[13]) if row[13] else []
+        except Exception:
+            guardrails = []
+
+        try:
+            data_inicio = pd.Timestamp(row[5])
+        except Exception:
+            data_inicio = pd.Timestamp.now()
+
+        return {
+            "id":             row[0],
+            "tipo_acao":      row[1],
+            "item":           row[2] or None,
+            "baseline_atual": row[3],
+            "baseline_alvo":  row[4],
+            "data_inicio":    data_inicio,
+            "chave_primaria": row[11],
+            "label_primaria": row[12],
+            "guardrails":     guardrails,
+            "impacto":        float(row[14]) if row[14] else 0,
+            "raciocinio":     row[15],
+            "problema":       problema,
+        }
+
+    return None
+
 
 def carregar_pedidos_sheets(sheets_id: str) -> pd.DataFrame | None:
     """
@@ -1110,12 +1242,14 @@ def carregar_pedidos_sheets(sheets_id: str) -> pd.DataFrame | None:
         gc       = gspread.service_account(filename="credentials.json")
         planilha = gc.open_by_key(sheets_id)
         rows     = planilha.worksheet("pedidos").get_all_values()
+        print(f"DEBUG get_all_values: {len(rows)} linhas lidas")
         headers  = rows[0]
         # Remove colunas sem cabeçalho
         cols_validas = [i for i, h in enumerate(headers) if h.strip() != ""]
         headers  = [headers[i] for i in cols_validas]
         data     = [[row[i] for i in cols_validas] for row in rows[1:]]
         df       = pd.DataFrame(data, columns=headers)
+        print(f"DEBUG df antes agregação: {len(df)} linhas | data max raw: {df['Data do Pedido'].max()}")
     except Exception as e:
         st.error(f"Erro ao ler aba 'pedidos': {e}")
         return None
@@ -1166,5 +1300,6 @@ def carregar_pedidos_sheets(sheets_id: str) -> pd.DataFrame | None:
     )
     df["is_cancelado"] = df["Status"].str.strip().str.lower().str.contains("cancel").fillna(False)
     df["Dia Semana"]   = df["Data do Pedido"].dt.day_name()
+    print(f"DEBUG df após agregação: {len(df)} linhas | data max: {df['Data do Pedido'].max()}")
 
     return df
