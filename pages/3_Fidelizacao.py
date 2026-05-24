@@ -50,7 +50,7 @@ clientes = (
 clientes["dias_inativo"]   = (hoje - clientes["ultimo"]).dt.days
 clientes["intervalo_medio"] = (
     (clientes["ultimo"] - clientes["primeiro"]).dt.days
-    / clientes["pedidos"].clip(lower=1)
+    / (clientes["pedidos"] - 1).clip(lower=1)
 )
 
 n_total    = len(clientes)
@@ -62,7 +62,7 @@ pct_ativos   = n_ativos / n_total * 100 if n_total else 0
 pct_churn = n_inativos / n_total * 100 if n_total else 0
 # Guarda no session_state para o Plano usar
 st.session_state["dias_churn"] = dias_churn
-intervalo   = clientes["intervalo_medio"].median()
+intervalo = clientes[clientes["pedidos"] > 1]["intervalo_medio"].median()
 ticket_med  = df_ok["Valor Bruto"].mean()
 
 # ── Header ────────────────────────────────────────────────────────────────────

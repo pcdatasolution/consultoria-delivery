@@ -208,6 +208,10 @@ h1, h2, h3 {
 [data-testid="stSidebarNav"] {
     display: none !important;
 }
+/* ── Esconder botão de colapsar sidebar ── */
+[data-testid="stSidebarCollapseButton"] {
+    display: none !important;
+}
 [data-testid="stMarkdownContainer"] > div > p,
 [data-testid="stMarkdownContainer"] > div > li {
     color: #111111 !important;
@@ -257,28 +261,18 @@ def render_sidebar(active: str = "home"):
           📂 Dados do Cliente
         </div>""", unsafe_allow_html=True)
 
-        # Se já tem dados enviados, mostra badge e botão para limpar
+        # Indicador de dados reais vs mock
         if not st.session_state.get("is_mock", True):
             st.markdown("""
             <div style="background:#f0faf4;border:1px solid #a7d7b8;
               border-radius:8px;padding:10px 12px;margin-bottom:8px;">
               <div style="font-size:12px;color:#16a34a;font-weight:600;">
-                ✅ Utilizando dados enviados
+                ✅ Utilizando dados reais
               </div>
               <div style="font-size:11px;color:#5a7a6a;margin-top:2px;">
                 Dados do cliente carregados com sucesso.
               </div>
             </div>""", unsafe_allow_html=True)
-
-            if st.button("🔄 Usar dados de demonstração",
-                         use_container_width=True, key="btn_limpar_dados"):
-                st.session_state["df_main"] = process_ifood_data(
-                    generate_mock_ifood_data(800)
-                )
-                st.session_state["is_mock"] = True
-                st.session_state.pop("upload_pendente", None)
-                st.rerun()
-
         else:
             st.markdown("""
             <div style="font-size:12px;color:#9aabb8;
@@ -341,6 +335,7 @@ def render_sidebar(active: str = "home"):
                     st.session_state["senha_digitada"] = ""
                     st.session_state.pop("df_main", None)
                     st.session_state.pop("is_mock", None)
+                    st.session_state.pop("sheets_id_carregado", None)
                     st.query_params.clear()
                     st.rerun()
 
@@ -387,7 +382,7 @@ def render_sidebar(active: str = "home"):
             if ajuste:
                 st.session_state["ajuste_manual"] = ajuste
 
-
+    carregar_sessao(acesso)
 # ─────────────────────────────────────────────
 #  MOCK DATA
 # ─────────────────────────────────────────────
@@ -552,8 +547,8 @@ def get_kpis(df: pd.DataFrame) -> dict:
 
     # Ticket médio por pedido (não por linha/item)
     ticket = (
-        ok.groupby("ID Pedido")["Valor Bruto"].sum().mean()
-        if "ID Pedido" in ok.columns and len(ok) else
+        ok.groupby("ID do Pedido")["Valor Bruto"].sum().mean()
+        if "ID do Pedido" in ok.columns and len(ok) else
         (ok["Valor Bruto"].mean() if len(ok) else 0)
     )
 
@@ -561,7 +556,7 @@ def get_kpis(df: pd.DataFrame) -> dict:
         "faturamento":         fat,
         "receita_liquida":     liq,
         "ticket_medio":        ticket,
-        "total_pedidos":       ok["ID Pedido"].nunique() if "ID Pedido" in ok.columns else len(ok),
+        "total_pedidos":       ok["ID do Pedido"].nunique() if "ID do Pedido" in ok.columns else len(ok),
         "taxa_cancelamento":   len(can) / len(df) * 100 if len(df) else 0,
         "comissao_total":      comissao,
         "perda_cancelamentos": can["Valor Bruto"].sum(),
@@ -1003,6 +998,32 @@ def _limpar_float(val) -> float:
     return float(str(val).replace(",", ".").strip())
 
 
+def carregar_sessao(acesso: dict):
+    """
+    Carrega (ou recarrega) os dados do cliente no session_state.
+    Deve ser chamada em todas as páginas logo após render_sidebar.
+    """
+    sheets_id = acesso.get("sheets_id")
+    ja_carregado = st.session_state.get("sheets_id_carregado")
+
+    if sheets_id and sheets_id != ja_carregado:
+        # Novo cliente ou primeiro carregamento — busca do Sheets
+        df_sheets    = carregar_pedidos_sheets(sheets_id)
+        dados_cliente = carregar_dados_cliente(sheets_id)
+        st.session_state["df_main"]  = df_sheets if df_sheets is not None else process_ifood_data(generate_mock_ifood_data(800))
+        st.session_state["is_mock"]  = df_sheets is None
+        st.session_state["config"]   = dados_cliente.get("config", {})
+        st.session_state["cardapio"] = dados_cliente.get("cardapio", {})
+        st.session_state["sheets_id_carregado"] = sheets_id
+
+    elif not sheets_id and "df_main" not in st.session_state:
+        # Visitante sem senha e sem dados — inicializa mock
+        st.session_state["df_main"]  = process_ifood_data(generate_mock_ifood_data(800))
+        st.session_state["is_mock"]  = True
+        st.session_state["config"]   = {}
+        st.session_state["cardapio"] = {}
+
+
 def carregar_dados_cliente(sheets_id: str) -> dict:
     """
     Lê todas as abas da planilha do cliente no Google Sheets.
@@ -1255,7 +1276,10 @@ def carregar_pedidos_sheets(sheets_id: str) -> pd.DataFrame | None:
         return None
 
     if df.empty:
-        return None
+            return None
+
+    # Conta itens por pedido antes de agregar
+    itens_por_pedido = df.groupby("ID do Pedido")["Nome do Item"].count().rename("Qtd Itens")
 
     # Garantir tipos corretos
     # Combina data + hora se existirem separados, senão usa só a data
@@ -1297,6 +1321,7 @@ def carregar_pedidos_sheets(sheets_id: str) -> pd.DataFrame | None:
                 "Hora":                   ("Hora",                   "first"),
             }
         )
+        .merge(itens_por_pedido, on="ID do Pedido", how="left")
     )
     df["is_cancelado"] = df["Status"].str.strip().str.lower().str.contains("cancel").fillna(False)
     df["Dia Semana"]   = df["Data do Pedido"].dt.day_name()

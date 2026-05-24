@@ -55,16 +55,28 @@ tx_cancel    = kpis["taxa_cancelamento"]
 perda_cancel = kpis["perda_cancelamentos"]
 total_pedidos = kpis["total_pedidos"]
 
+df_ok_periodo = df[~df["is_cancelado"]]
+dias_periodo  = (df_ok_periodo["Data do Pedido"].max() - df_ok_periodo["Data do Pedido"].min()).days + 1
+semanas_periodo = dias_periodo / 7
+
+pedidos_por_dia     = total_pedidos / dias_periodo if dias_periodo else 0
+pedidos_por_semana  = total_pedidos / semanas_periodo if semanas_periodo else 0
+perda_por_dia       = perda_cancel / dias_periodo if dias_periodo else 0
+
+cancelados_por_semana = len(df[df["is_cancelado"]]) / semanas_periodo if semanas_periodo else 0
+
 c1, c2, c3, c4 = st.columns(4)
-c1.metric("Pedidos Concluídos",  f"{total_pedidos:,}".replace(",", "."))
+c1.metric("Pedidos Concluídos",
+    f"{pedidos_por_semana:.0f}/sem",
+    delta=f"Total no período: {total_pedidos:,}".replace(",", "."), delta_color="off")
 c2.metric("Tempo Médio de Entrega", f"{tempo_medio:.0f} min",
     delta="⚠️ Acima de 45 min" if tempo_medio > 45 else "✅ Dentro da meta",
     delta_color="inverse" if tempo_medio > 45 else "normal")
 c3.metric("Taxa de Cancelamento", f"{tx_cancel:.1f}%",
-    delta="Meta: abaixo de 8%", delta_color="off")
+    delta=f"{cancelados_por_semana:.0f} cancelados/sem", delta_color="off")
 c4.metric("Perda em Cancelamentos",
-    f"R$ {perda_cancel:,.0f}".replace(",", "."),
-    delta="Parcialmente recuperável", delta_color="off")
+    f"R$ {perda_cancel / semanas_periodo:,.0f}".replace(",", ".")+"/sem",
+    delta=f"Total no período: R$ {perda_cancel:,.0f}".replace(",", "."), delta_color="off")
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  SEÇÃO 2 — Cancelamentos por dia da semana (visível nos dois modos)
@@ -90,8 +102,8 @@ fig_dias.add_trace(go.Bar(
     x=dia_stats["Label"],
     y=dia_stats["entregues"],
     marker_color="#005737",
-    text=dia_stats["total"],
-    textposition="outside",
+    text=dia_stats["entregues"],
+    textposition="inside",
     hovertemplate="%{x}<br>Entregues: %{y}<extra></extra>",
 ))
 fig_dias.add_trace(go.Bar(
@@ -103,6 +115,15 @@ fig_dias.add_trace(go.Bar(
     textposition="inside",
     hovertemplate="%{x}<br>Cancelados: %{y} (%{text})<extra></extra>",
 ))
+# Anotações com total acima de cada barra
+for _, row in dia_stats.iterrows():
+    fig_dias.add_annotation(
+        x=row["Label"], y=row["total"],
+        text=str(int(row["total"])),
+        showarrow=False,
+        yshift=10,
+        font=dict(size=11, color="#9090a8"),
+    )
 fig_dias.update_layout(
     barmode="stack",
     height=280,
@@ -237,10 +258,10 @@ cancel_bairro = (
 fig_map = px.scatter_mapbox(
     cancel_bairro,
     lat="lat", lon="lon",
-    size="Taxa Cancelamento (%)",
+    size="Total Pedidos",
     color="Taxa Cancelamento (%)",
     color_continuous_scale=["#34d399","#f59e0b","#f87171"],
-    size_max=32,
+    size_max=40,
     hover_name="Bairro",
     hover_data={
         "Taxa Cancelamento (%)": ":.1f",
@@ -248,7 +269,7 @@ fig_map = px.scatter_mapbox(
         "Cancelamentos": True,
         "lat": False, "lon": False,
     },
-    mapbox_style="carto-darkmatter",
+    mapbox_style="carto-positron",
     zoom=11,
     center={"lat": -23.5505, "lon": -46.6333},
 )

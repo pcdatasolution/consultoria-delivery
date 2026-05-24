@@ -89,7 +89,11 @@ ticket_medio = (
     if "ID do Pedido" in df_ok.columns
     else df_ok["Valor Bruto"].mean()
 )
-itens_p_pedido = df_ok.groupby("ID Pedido")["Nome do Item"].count().mean() if "ID Pedido" in df_ok.columns else df_ok["Nome do Item"].count() / len(df_ok)
+itens_p_pedido = (
+    df_ok["Qtd Itens"].mean()
+    if "Qtd Itens" in df_ok.columns
+    else df_ok.groupby("ID do Pedido")["Nome do Item"].count().mean()
+)
 
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Receita Total no Período",

@@ -27,21 +27,6 @@ render_sidebar(active="home")
 acesso = detectar_modo()
 
 # ── Carregar / inicializar dados ──────────────────────────────────────────────
-sheets_id = acesso.get("sheets_id")
-if sheets_id:
-    df_sheets = carregar_pedidos_sheets(sheets_id)
-    dados_cliente = carregar_dados_cliente(sheets_id)
-    st.session_state["df_main"]  = df_sheets if df_sheets is not None else process_ifood_data(generate_mock_ifood_data(800))
-    st.session_state["is_mock"]  = df_sheets is None
-    st.session_state["config"]   = dados_cliente.get("config", {})
-    st.session_state["cardapio"] = dados_cliente.get("cardapio", {})
-    st.session_state["sheets_id_carregado"] = sheets_id
-elif not sheets_id and "df_main" not in st.session_state:
-    st.session_state["df_main"] = process_ifood_data(generate_mock_ifood_data(800))
-    st.session_state["is_mock"] = True
-    st.session_state["config"]  = {}
-    st.session_state["cardapio"] = {}
-
 config   = st.session_state.get("config", {})
 cardapio = st.session_state.get("cardapio", {})
 dias_churn = config.get("churn", 30)
@@ -115,7 +100,7 @@ data_inicial  = df_ok_periodo["Data do Pedido"].min()
 data_final    = df_ok_periodo["Data do Pedido"].max()
 dias_periodo  = (data_final - data_inicial).days + 1
 
-data_corte    = pd.Timestamp.now() - pd.Timedelta(days=dias_churn)
+data_corte    = df_ok_periodo["Data do Pedido"].max() - pd.Timedelta(days=dias_churn)
 clientes_em_risco = (
     df_ok_periodo.groupby("ID do Cliente")["Data do Pedido"].max()
     .lt(data_corte)
