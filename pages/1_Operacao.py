@@ -255,6 +255,8 @@ cancel_bairro = (
     .reset_index()
 )
 
+print(cancel_bairro[["Bairro", "lat", "lon", "Total Pedidos", "Taxa Cancelamento (%)"]].to_string())
+
 fig_map = px.scatter_mapbox(
     cancel_bairro,
     lat="lat", lon="lon",
@@ -271,8 +273,11 @@ fig_map = px.scatter_mapbox(
     },
     mapbox_style="carto-positron",
     zoom=11,
-    center={"lat": -23.5505, "lon": -46.6333},
+    center={"lat": -23.028971, "lon": -45.560095},
 )
+
+
+
 fig_map.update_layout(
     height=400,
     margin=dict(l=0, r=0, t=0, b=0),

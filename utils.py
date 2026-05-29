@@ -8,6 +8,10 @@ import numpy as np
 from datetime import datetime, timedelta
 import random
 import streamlit as st
+import gspread
+import json
+import os
+from google.oauth2.service_account import Credentials
 
 # ─────────────────────────────────────────────
 #  CONTROLE DE ACESSO
@@ -19,7 +23,7 @@ CLIENTES_PREMIUM = {
     "burger123": {"nome": "Burguer do João",        "sheets_id": "1fonnx8d9zbdTtGLIy__jv9P2atycuIFT82bjaOm0jfc"},
     "pizza456":  {"nome": "Pizzaria Bella Napoli",  "sheets_id": ""},
     "frango789": {"nome": "Frango Assado do Zé",    "sheets_id": ""},
-    "demo_full": {"nome": "Demo Interna",           "sheets_id": ""},
+    "burgueria0000": {"nome": "Burgueria",           "sheets_id": "12xeUXbNQlKdafczf1v2H59Ewk_VFk_L0tyDee1UJa2k"},
 }
 
 def detectar_modo() -> dict:
@@ -229,6 +233,21 @@ h1, h2, h3 {
 
 def inject_css():
     st.markdown(CSS_GLOBAL, unsafe_allow_html=True)
+
+def _get_gspread_client():
+
+
+    raw = os.environ.get("GOOGLE_CREDENTIALS")
+    if raw:
+        info = json.loads(raw)
+        scopes = [
+            "https://spreadsheets.google.com/feeds",
+            "https://www.googleapis.com/auth/drive",
+        ]
+        creds = Credentials.from_service_account_info(info, scopes=scopes)
+        return gspread.authorize(creds)
+    else:
+        return gspread.service_account(filename="credentials.json")
 
 
 def render_sidebar(active: str = "home"):
@@ -574,8 +593,11 @@ def calcular_choque(df: pd.DataFrame, dias_churn: int = 30) -> dict:
     item_s = (ok.groupby("Nome do Item")
                .agg(vendas=("Nome do Item","count"), receita=("Valor dos Itens","sum"))
                .reset_index())
+    cardapio_ativo = st.session_state.get("cardapio", {})
     item_s["margem"] = item_s["Nome do Item"].apply(
-        lambda n: (ITENS_CARDAPIO[n]["preco"]-ITENS_CARDAPIO[n]["custo"])/ITENS_CARDAPIO[n]["preco"]
+        lambda n: cardapio_ativo[n]["margem"]
+        if n in cardapio_ativo
+        else (ITENS_CARDAPIO[n]["preco"]-ITENS_CARDAPIO[n]["custo"])/ITENS_CARDAPIO[n]["preco"]
         if n in ITENS_CARDAPIO else MARGEM_PROXY)
     med_v = item_s["vendas"].median()
     med_m = item_s["margem"].median()
@@ -924,6 +946,58 @@ def gerar_plano_automatico(df: pd.DataFrame, config: dict = None, cardapio: dict
 
 
     # ─────────────────────────────────────────────────────────────────────
+    # 7. VAZAMENTO DE LUCRATIVIDADE (itens com margem abaixo da mediana)
+    # ─────────────────────────────────────────────────────────────────────
+    item_stats = (
+        ok.groupby("Nome do Item")
+        .agg(vendas=("Nome do Item", "count"), receita=("Valor dos Itens", "sum"))
+        .reset_index()
+    )
+    item_stats["margem"] = item_stats["Nome do Item"].apply(
+        lambda n: cardapio[n]["margem"]
+        if n in cardapio
+        else (ITENS_CARDAPIO[n]["preco"] - ITENS_CARDAPIO[n]["custo"]) / ITENS_CARDAPIO[n]["preco"]
+        if n in ITENS_CARDAPIO else margem_proxy
+    )
+    med_v_luc = item_stats["vendas"].median()
+    med_m_luc = item_stats["margem"].median()
+
+    cavalos = item_stats[
+        (item_stats["vendas"] >= med_v_luc) & (item_stats["margem"] < med_m_luc)
+    ]
+    vazamento = (cavalos["receita"] * (med_m_luc - cavalos["margem"])).sum()
+    vazamento = max(vazamento, 0)
+
+    if vazamento > 200 and len(cavalos) > 0:
+        top_cavalos = cavalos.nlargest(3, "receita")["Nome do Item"].tolist()
+        nomes_fmt = ", ".join(top_cavalos)
+        margem_med_pct = med_m_luc * 100
+
+        problemas.append({
+            "categoria":  "💰 Lucratividade",
+            "titulo":     f"R$ {vazamento:,.0f} em lucro não realizado por margem baixa no cardápio".replace(",", "."),
+            "descricao":  (
+                f"{len(cavalos)} item(ns) com alto volume mas margem abaixo da mediana "
+                f"({margem_med_pct:.0f}%): {nomes_fmt}. "
+                f"Esses itens vendem bem mas comprimem sua margem. "
+                f"Pequenos ajustes de preço ou custo convertem diretamente em lucro."
+            ),
+            "raciocinio": (
+                f"Para cada item: receita_item × (margem_mediana − margem_item). "
+                f"Soma dos {len(cavalos)} itens-problema = R$ {vazamento:,.0f} no período "
+                f"({dias} dias). Impacto mensal = valor do período × fator ({fator:.2f}).".replace(",", ".")
+            ),
+            "impacto_r":  vazamento * fator,
+            "confianca":  "alta" if cardapio else "media",
+            "acoes": [
+                f"Revisar preço de {top_cavalos[0]}: aumento de 8–12% provavelmente não reduz volume.",
+                f"Verificar se custo dos insumos subiu sem repasse ao preço de venda.",
+                f"Considerar criar versão premium do item mais vendido para elevar margem média.",
+            ],
+            "prioridade": 1 if vazamento * fator > 500 else 2,
+        })
+
+    # ─────────────────────────────────────────────────────────────────────
     # Ranking final
     # ─────────────────────────────────────────────────────────────────────
     problemas.sort(key=lambda x: (x["prioridade"], -x["impacto_r"]))
@@ -1037,7 +1111,7 @@ def carregar_dados_cliente(sheets_id: str) -> dict:
         return {}
 
     try:
-        gc       = gspread.service_account(filename="credentials.json")
+        gc = _get_gspread_client()
         planilha = gc.open_by_key(sheets_id)
     except Exception as e:
         st.error(f"Erro ao conectar ao Google Sheets: {e}")
@@ -1105,7 +1179,7 @@ def salvar_experimento_sheets(sheets_id: str, exp: dict) -> bool:
         return False
 
     try:
-        gc       = gspread.service_account(filename="credentials.json")
+        gc       = _get_gspread_client()
         planilha = gc.open_by_key(sheets_id)
         ws       = planilha.worksheet("experimentos")
     except Exception as e:
@@ -1167,7 +1241,7 @@ def encerrar_experimento_sheets(sheets_id: str) -> bool:
         return False
 
     try:
-        gc       = gspread.service_account(filename="credentials.json")
+        gc       = _get_gspread_client()
         planilha = gc.open_by_key(sheets_id)
         ws       = planilha.worksheet("experimentos")
         todas    = ws.get_all_values()
@@ -1194,7 +1268,7 @@ def carregar_experimento_ativo_sheets(sheets_id: str) -> dict | None:
         return None
 
     try:
-        gc       = gspread.service_account(filename="credentials.json")
+        gc       = _get_gspread_client()
         planilha = gc.open_by_key(sheets_id)
         ws       = planilha.worksheet("experimentos")
         todas    = ws.get_all_values()
@@ -1260,7 +1334,7 @@ def carregar_pedidos_sheets(sheets_id: str) -> pd.DataFrame | None:
         return None
 
     try:
-        gc       = gspread.service_account(filename="credentials.json")
+        gc       = _get_gspread_client()
         planilha = gc.open_by_key(sheets_id)
         rows     = planilha.worksheet("pedidos").get_all_values()
         print(f"DEBUG get_all_values: {len(rows)} linhas lidas")
@@ -1297,8 +1371,8 @@ def carregar_pedidos_sheets(sheets_id: str) -> pd.DataFrame | None:
     df["Taxa de Entrega"]        = df["Taxa de Entrega"].apply(_limpar_valor_monetario)
     df["Tempo de Entrega (min)"] = pd.to_numeric(df["Tempo de Entrega (min)"], errors="coerce").fillna(0)
     df["Distância (km)"]         = pd.to_numeric(df["Distância (km)"], errors="coerce").fillna(0)
-    df["lat"]                    = pd.to_numeric(df["lat"], errors="coerce")
-    df["lon"]                    = pd.to_numeric(df["lon"], errors="coerce")
+    df["lat"]                    = df["lat"].apply(_limpar_valor_monetario)
+    df["lon"]                    = df["lon"].apply(_limpar_valor_monetario)
 
     # Agregar para 1 linha por pedido (mesmo formato do mock)
     df = (

@@ -45,8 +45,11 @@ item_stats = (
     .reset_index()
 )
 item_stats["ticket"]  = item_stats["receita"] / item_stats["vendas"]
-item_stats["margem"]  = item_stats["Nome do Item"].apply(
-    lambda n: (ITENS_CARDAPIO[n]["preco"] - ITENS_CARDAPIO[n]["custo"]) / ITENS_CARDAPIO[n]["preco"]
+cardapio_ativo = st.session_state.get("cardapio", {})
+item_stats["margem"] = item_stats["Nome do Item"].apply(
+    lambda n: cardapio_ativo[n]["margem"]
+    if n in cardapio_ativo
+    else (ITENS_CARDAPIO[n]["preco"] - ITENS_CARDAPIO[n]["custo"]) / ITENS_CARDAPIO[n]["preco"]
     if n in ITENS_CARDAPIO else MARGEM_PROXY
 )
 item_stats["rec_liq"] = item_stats["receita"] - item_stats["comissao"]

@@ -313,7 +313,6 @@ if exp_ativo is None:
                 "raciocinio":     prob["raciocinio"],
             }
             st.session_state["experimento_ativo"] = novo_exp
-            st.write(f"DEBUG sheets_id no botão: {sheets_id}")
             if sheets_id:
                 salvar_experimento_sheets(sheets_id, novo_exp)
             st.rerun()
